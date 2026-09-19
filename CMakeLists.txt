@@ -1,2 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(sengine VERSION 0.1.0 LANGUAGES CXX)
+add_library(sengine src/geometry.cpp)
+add_library(sengine::sengine ALIAS sengine)
+target_compile_features(sengine PUBLIC cxx_std_23)
+target_include_directories(sengine PUBLIC include)
