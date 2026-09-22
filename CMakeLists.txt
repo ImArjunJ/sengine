@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(sengine VERSION 0.1.0 LANGUAGES CXX)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(sengine_graphics "Build SDL3 and Filament drawing services" ON)
 add_library(sengine src/geometry.cpp src/explorer.cpp src/camera_path.cpp)
