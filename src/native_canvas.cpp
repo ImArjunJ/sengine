@@ -43,15 +43,8 @@ void ellipse(point2 c, float rx, float ry, color color, bool outline) {
 namespace sengine {
 native_canvas::native_canvas() {
     canvas = this;
-    for (int i = 0; i < 3; ++i)
-        cursors[i] = SDL_CreateSystemCursor(i == 1   ? SDL_SYSTEM_CURSOR_POINTER
-                                            : i == 2 ? SDL_SYSTEM_CURSOR_TEXT
-                                                     : SDL_SYSTEM_CURSOR_DEFAULT);
 }
 native_canvas::~native_canvas() {
-    for (auto* c : cursors)
-        if (c)
-            SDL_DestroyCursor(c);
     if (canvas == this)
         canvas = nullptr;
 }
@@ -59,31 +52,28 @@ void native_canvas::begin_events() {
     pressed.fill(false);
     text.clear();
 }
-void native_canvas::event(const SDL_Event& e) {
-    if (e.type == SDL_EVENT_MOUSE_MOTION || e.type == SDL_EVENT_MOUSE_WHEEL) {
-        SDL_WindowID window_id = e.type == SDL_EVENT_MOUSE_MOTION ? e.motion.windowID : e.wheel.windowID;
-        int logical_width = width, logical_height = height;
-        if (auto* window = SDL_GetWindowFromID(window_id))
-            SDL_GetWindowSize(window, &logical_width, &logical_height);
-        float x = e.type == SDL_EVENT_MOUSE_MOTION ? e.motion.x : e.wheel.mouse_x;
-        float y = e.type == SDL_EVENT_MOUSE_MOTION ? e.motion.y : e.wheel.mouse_y;
+void native_canvas::event(const sengine::input_event& e) {
+    if (e.type == sengine::event_type::mouse_motion || e.type == sengine::event_type::mouse_wheel) {
+        int logical_width = e.logical_width, logical_height = e.logical_height;
+        float x = e.type == sengine::event_type::mouse_motion ? e.motion.x : e.wheel.mouse_x;
+        float y = e.type == sengine::event_type::mouse_motion ? e.motion.y : e.wheel.mouse_y;
         input.x = x * width / std::max(1, logical_width);
         input.y = y * height / std::max(1, logical_height);
     }
-    if (e.type == SDL_EVENT_KEY_DOWN) {
-        down[e.key.scancode] = true;
+    if (e.type == sengine::event_type::key_down) {
+        down[e.key.code] = true;
         if (!e.key.repeat)
-            pressed[e.key.scancode] = true;
+            pressed[e.key.code] = true;
     }
-    if (e.type == SDL_EVENT_KEY_UP)
-        down[e.key.scancode] = false;
-    if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+    if (e.type == sengine::event_type::key_up)
+        down[e.key.code] = false;
+    if (e.type == sengine::event_type::focus_lost) {
         down.fill(false);
         pressed.fill(false);
         text.clear();
     }
-    if (e.type == SDL_EVENT_TEXT_INPUT) {
-        const auto* p = reinterpret_cast<const unsigned char*>(e.text.text);
+    if (e.type == sengine::event_type::text_input) {
+        const auto* p = reinterpret_cast<const unsigned char*>(e.text.c_str());
         while (*p) {
             unsigned c = *p++;
             int n = 0;
@@ -252,11 +242,11 @@ bool is_mouse_button_released() {
 bool is_mouse_button_down() {
     return context().input.down;
 }
-bool is_key_down(int key) {
-    return context().down.at(key);
+bool is_key_down(key_code key) {
+    return context().down[key];
 }
-bool is_key_pressed(int key) {
-    return context().pressed.at(key);
+bool is_key_pressed(key_code key) {
+    return context().pressed[key];
 }
 int get_char_pressed() {
     if (context().text.empty())
@@ -281,9 +271,8 @@ const char* codepoint_to_utf8(int cp, int* size) {
     return text;
 }
 void set_mouse_cursor(cursor cursor) {
-    int kind = static_cast<int>(cursor);
-    if (kind >= 0 && kind < 3 && context().cursors[kind])
-        SDL_SetCursor(context().cursors[kind]);
+    if (context().display)
+        context().display->cursor(cursor);
 }
 
 }

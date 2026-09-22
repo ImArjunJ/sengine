@@ -1,3 +1,4 @@
+#include "backends/filament_access.hpp"
 #include "sengine/native_hud.hpp"
 #include <algorithm>
 #include <backend/PixelBufferDescriptor.h>
@@ -102,10 +103,12 @@ struct native_hud::impl {
         e.destroy(atlas);
     }
 };
-native_hud::native_hud(Engine& e, const std::filesystem::path& material, const std::filesystem::path& font)
-    : impl_(std::make_unique<impl>(e)) {
+native_hud::native_hud(renderer& graphics, const std::filesystem::path& material,
+                       const std::filesystem::path& font)
+    : impl_(std::make_unique<impl>(backend_access::engine(graphics))) {
+    auto& e = backend_access::engine(graphics);
     auto& p = *impl_;
-    std::ifstream in(material, std::ios::binary);
+    std::ifstream in(material.string() + ".filamat", std::ios::binary);
     std::vector<char> data((std::istreambuf_iterator<char>(in)), {});
     if (data.empty())
         throw std::runtime_error("HUD material unavailable");
@@ -364,7 +367,8 @@ void native_hud::text(float x, float y, const std::string& s, float size, ink c,
         x += g.advance * t;
     }
 }
-void native_hud::render(Renderer& r) {
+void native_hud::render(renderer& graphics) {
+    auto& r = backend_access::drawing(graphics);
     if (vertices_.empty())
         return;
     if (vertices_.size() > 120000)

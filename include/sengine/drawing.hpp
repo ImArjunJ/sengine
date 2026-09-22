@@ -1,5 +1,5 @@
 #pragma once
-#include <SDL3/SDL.h>
+#include "sengine/events.hpp"
 #include <string>
 namespace sengine::drawing {
 struct point2 {
@@ -19,7 +19,7 @@ struct transform {
     float zoom{1};
 };
 inline constexpr color transparent{0, 0, 0, 0};
-enum class cursor { arrow, hand, text };
+using cursor = sengine::cursor_shape;
 void begin_transform(transform);
 void end_transform();
 void begin_scissor_mode(int, int, int, int);
@@ -54,8 +54,8 @@ double get_time();
 bool is_mouse_button_pressed();
 bool is_mouse_button_released();
 bool is_mouse_button_down();
-bool is_key_down(int);
-bool is_key_pressed(int);
+bool is_key_down(key_code);
+bool is_key_pressed(key_code);
 int get_char_pressed();
 const char* codepoint_to_utf8(int, int*);
 void set_mouse_cursor(cursor);

@@ -4,11 +4,8 @@
 #include <memory>
 #include <string>
 #include <vector>
-namespace filament {
-class Engine;
-class Renderer;
-}
 namespace sengine {
+class renderer;
 struct ink {
     float r, g, b, a{1};
 };
@@ -21,7 +18,7 @@ struct hud_input {
 };
 class native_hud {
   public:
-    native_hud(filament::Engine&, const std::filesystem::path& material, const std::filesystem::path& font);
+    native_hud(renderer&, const std::filesystem::path& material, const std::filesystem::path& font);
     ~native_hud();
     void begin(unsigned width, unsigned height, float scale);
     void rectangle(float x, float y, float w, float h, ink);
@@ -32,7 +29,7 @@ class native_hud {
     void clip(float x, float y, float width, float height);
     void clear_clip();
     void paper_texture(float x, float y, float width, float height);
-    void render(filament::Renderer&);
+    void render(renderer&);
     float width() const { return width_ / scale_; }
     float height() const { return height_ / scale_; }
 

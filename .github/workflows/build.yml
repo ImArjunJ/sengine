@@ -3,9 +3,45 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
-  build:
+  core:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -Dsengine_graphics=OFF
       - run: cmake --build build --parallel 2
+  graphics:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, window: sdl, graphics: opengl}
+          - {os: ubuntu-24.04, window: glfw, graphics: opengl}
+          - {os: ubuntu-24.04, window: sdl, graphics: vulkan}
+          - {os: ubuntu-24.04, window: glfw, graphics: vulkan}
+          - {os: macos-15, window: sdl, graphics: metal}
+          - {os: macos-15, window: glfw, graphics: metal}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libc++-dev libc++abi-dev libfreetype6-dev libpng-dev libglfw3-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev
+          git clone --depth 1 --branch release-3.2.28 https://github.com/libsdl-org/SDL.git /tmp/sdl
+          cmake -S /tmp/sdl -B /tmp/sdl/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/sdl/build --parallel 2
+          sudo cmake --install /tmp/sdl/build
+      - if: runner.os == 'macOS'
+        run: brew install sdl3 glfw freetype libpng
+      - run: ./tools/fetch_filament.sh
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=cmake/clang_libcxx.cmake -Dsengine_window_backend=${{ matrix.window }} -Dsengine_graphics_api=${{ matrix.graphics }}
+      - run: cmake --build build --parallel 2
+      - if: runner.os == 'macOS'
+        run: |
+          git clone --depth 1 https://github.com/ImArjunJ/little-world.git /tmp/world-assets
+          ./build/sengine_viewer /tmp/world-assets/assets/scene/greenhouse.gltf /tmp/metal.png
+      - if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: metal-${{ matrix.window }}
+          path: /tmp/metal.png

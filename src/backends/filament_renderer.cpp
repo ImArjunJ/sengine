@@ -1,6 +1,8 @@
-#include "sengine/renderer.hpp"
+#include "backends/filament_access.hpp"
+#include "native_surface.hpp"
 #include "sengine/image_export.hpp"
 #include "sengine/native_hud.hpp"
+#include "sengine/renderer.hpp"
 #include <backend/PixelBufferDescriptor.h>
 #include <cmath>
 #include <filament/Camera.h>
@@ -43,20 +45,32 @@ struct renderer::impl {
         filament::Engine::destroy(&engine);
     }
 };
-renderer::renderer(void* window, void* shared_context) : impl_(std::make_unique<impl>()) {
+renderer::renderer(window& display) : impl_(std::make_unique<impl>()) {
+    auto* window = native_surface::handle(display);
+    auto* shared_context = native_surface::shared_context(display);
     if (!window)
         throw std::invalid_argument("A native window is required");
-#ifdef __APPLE__
-    constexpr auto backend = filament::Engine::Backend::METAL;
-#else
-    constexpr auto backend = filament::Engine::Backend::OPENGL;
-#endif
+    auto backend = filament::Engine::Backend::DEFAULT;
+    switch (display.graphics()) {
+    case graphics_api::opengl:
+        backend = filament::Engine::Backend::OPENGL;
+        break;
+    case graphics_api::vulkan:
+        backend = filament::Engine::Backend::VULKAN;
+        break;
+    case graphics_api::metal:
+        backend = filament::Engine::Backend::METAL;
+        break;
+    default:
+        break;
+    }
     auto& p = *impl_;
     filament::Engine::Config config;
     config.driverHandleArenaSizeMB = 16;
     p.engine = filament::Engine::create(backend, nullptr, shared_context, &config);
     if (!p.engine)
         throw std::runtime_error("Cannot initialize Filament graphics backend");
+    native_surface::release_context(display);
     p.swap = p.engine->createSwapChain(window);
     p.renderer = p.engine->createRenderer();
     p.scene = p.engine->createScene();
@@ -69,20 +83,63 @@ renderer::renderer(void* window, void* shared_context) : impl_(std::make_unique<
     p.view->setCamera(p.camera);
 }
 renderer::~renderer() = default;
-filament::Engine& renderer::engine() {
-    return *impl_->engine;
+void renderer::visible_layers(std::uint8_t mask) {
+    impl_->view->setVisibleLayers(0xff, mask);
 }
-filament::Scene& renderer::scene() {
-    return *impl_->scene;
+void renderer::focus_distance(float value) {
+    impl_->camera->setFocusDistance(value);
 }
-filament::View& renderer::view() {
-    return *impl_->view;
+void renderer::configure(const render_options& options) {
+    auto& p = *impl_;
+    p.renderer->setClearOptions({.clearColor = {options.clear_color.x, options.clear_color.y,
+                                                options.clear_color.z, options.clear_color.w},
+                                 .clear = true});
+    p.camera->setExposure(options.aperture, options.shutter, options.sensitivity);
+    p.camera->setFocusDistance(options.focus_distance);
+    filament::TemporalAntiAliasingOptions taa;
+    taa.enabled = options.temporal_aa;
+    p.view->setTemporalAntiAliasingOptions(taa);
+    p.view->setAntiAliasing(filament::View::AntiAliasing::FXAA);
+    filament::AmbientOcclusionOptions ao;
+    ao.enabled = options.occlusion;
+    ao.radius = options.occlusion_radius;
+    ao.power = options.occlusion_power;
+    ao.quality =
+        options.occlusion_quality == 2 ? filament::QualityLevel::HIGH : filament::QualityLevel::MEDIUM;
+    ao.resolution = options.occlusion_resolution;
+    ao.lowPassFilter = filament::QualityLevel::HIGH;
+    p.view->setAmbientOcclusionOptions(ao);
+    p.view->setDithering(filament::View::Dithering::TEMPORAL);
+    p.view->setShadowType(options.soft_shadows ? filament::ShadowType::PCSS : filament::ShadowType::PCF);
+    filament::DepthOfFieldOptions dof;
+    dof.enabled = options.depth_of_field;
+    dof.cocScale = options.blur_scale;
+    dof.maxForegroundCOC = options.foreground_blur;
+    dof.maxBackgroundCOC = options.background_blur;
+    p.view->setDepthOfFieldOptions(dof);
+    filament::FogOptions fog;
+    fog.enabled = options.fog.enabled;
+    fog.distance = options.fog.distance;
+    fog.density = options.fog.density;
+    fog.cutOffDistance = options.fog.cutoff;
+    fog.heightFalloff = options.fog.falloff;
+    fog.color = {options.fog.color.x, options.fog.color.y, options.fog.color.z};
+    p.view->setFogOptions(fog);
 }
-filament::Camera& renderer::camera() {
-    return *impl_->camera;
+filament::Engine& backend_access::engine(renderer& r) {
+    return *r.impl_->engine;
 }
-filament::Renderer& renderer::backend() {
-    return *impl_->renderer;
+filament::Scene& backend_access::scene(renderer& r) {
+    return *r.impl_->scene;
+}
+filament::View& backend_access::view(renderer& r) {
+    return *r.impl_->view;
+}
+filament::Camera& backend_access::camera(renderer& r) {
+    return *r.impl_->camera;
+}
+filament::Renderer& backend_access::drawing(renderer& r) {
+    return *r.impl_->renderer;
 }
 bool renderer::frame(const camera_pose& camera, unsigned width, unsigned height, float near_plane,
                      float far_plane, native_hud* overlay, const std::filesystem::path& capture,
@@ -108,7 +165,7 @@ bool renderer::frame(const camera_pose& camera, unsigned width, unsigned height,
         return false;
     p.renderer->render(p.view);
     if (overlay && capture_overlay)
-        overlay->render(*p.renderer);
+        overlay->render(*this);
     bool read_done = false;
     if (!capture.empty())
         p.renderer->readPixels(0, 0, width, height,
@@ -118,7 +175,7 @@ bool renderer::frame(const camera_pose& camera, unsigned width, unsigned height,
                                    [](void*, size_t, void* context) { *static_cast<bool*>(context) = true; },
                                    &read_done));
     if (overlay && !capture_overlay)
-        overlay->render(*p.renderer);
+        overlay->render(*this);
     p.renderer->endFrame();
     if (!capture.empty()) {
         p.engine->flushAndWait();
