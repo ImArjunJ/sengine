@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "id": "body",
+      "transform": {"position": [0, 0, 0]},
+      "components": {
+        "surface": {"version": 1, "fields": {"color": [0.95, 0.65, 0.22, 1]}},
+        "physics.body": {"version": 1, "fields": {"motion": "dynamic", "half_extent": [0.45, 0.45, 0.45]}}
+      }
+    }
+  ]
+}

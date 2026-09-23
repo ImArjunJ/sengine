@@ -10,6 +10,7 @@ jobs:
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -Dsengine_graphics=OFF
       - run: cmake --build build --parallel 2
       - run: ./build/sengine_scenes /tmp/scene.json
+      - run: ./build/sengine_falling
   graphics:
     strategy:
       fail-fast: false
@@ -41,11 +42,15 @@ jobs:
         run: |
           xvfb-run -a -s "-screen 0 1200x800x24" ./build/sengine_relay /tmp/relay-1.png 1
           xvfb-run -a -s "-screen 0 1200x800x24" ./build/sengine_relay /tmp/relay-2.png 2
+          xvfb-run -a -s "-screen 0 1200x800x24" ./build/sengine_physics_demo /tmp/physics.png
       - if: runner.os == 'macOS'
         run: |
           ./build/sengine_relay /tmp/relay-1.png 1
           ./build/sengine_relay /tmp/relay-2.png 2
+          ./build/sengine_physics_demo /tmp/physics.png
       - uses: actions/upload-artifact@v4
         with:
-          name: relay-${{ matrix.graphics }}-${{ matrix.window }}
-          path: /tmp/relay-*.png
+          name: examples-${{ matrix.graphics }}-${{ matrix.window }}
+          path: |
+            /tmp/relay-*.png
+            /tmp/physics.png

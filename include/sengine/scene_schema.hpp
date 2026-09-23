@@ -3,6 +3,7 @@
 #include "scene_document.hpp"
 #include "world.hpp"
 #include <concepts>
+#include <initializer_list>
 #include <limits>
 #include <set>
 #include <type_traits>
@@ -123,6 +124,36 @@ template <class component, class value> class scene_member final : public scene_
   private:
     value component::* member_;
 };
+template <class component, class value> class scene_enum final : public scene_field<component> {
+  public:
+    scene_enum(value component::* member, std::initializer_list<std::pair<std::string, value>> names)
+        : member_(member) {
+        std::set<value> values;
+        for (const auto& [name, item] : names)
+            if (name.empty() || !names_.emplace(name, item).second || !values.insert(item).second)
+                throw std::invalid_argument("Invalid or duplicate enum name");
+        if (names_.empty())
+            throw std::invalid_argument("An enum needs named values");
+    }
+    void decode(component& target, const scene_value& data, const scene_read_context&) const override {
+        const auto& name = scene_string(data);
+        const auto found = names_.find(name);
+        if (found == names_.end())
+            throw std::invalid_argument("Unknown enum value: " + name);
+        target.*member_ = found->second;
+    }
+    scene_value encode(const component& target, const scene_write_context&) const override {
+        for (const auto& [name, item] : names_)
+            if (target.*member_ == item)
+                return name;
+        throw std::invalid_argument("Enum value has no registered name");
+    }
+    void remap(scene_value&, const std::string&) const override {}
+
+  private:
+    value component::* member_;
+    std::map<std::string, value, std::less<>> names_;
+};
 }
 template <class component> class component_schema final : public detail::scene_codec {
   public:
@@ -141,6 +172,18 @@ template <class component> class component_schema final : public detail::scene_c
     }
     component_schema& validate(void (*check)(const component&)) {
         check_ = check;
+        return *this;
+    }
+    template <class value>
+        requires std::is_enum_v<value>
+    component_schema& enumeration(std::string name, value component::* member,
+                                  std::initializer_list<std::pair<std::string, value>> values,
+                                  bool required = true) {
+        if (name.empty() || !member || fields_.contains(name))
+            throw std::invalid_argument("Invalid or duplicate component field: " + name);
+        fields_.emplace(
+            std::move(name),
+            field_record{std::make_unique<detail::scene_enum<component, value>>(member, values), required});
         return *this;
     }
     component_schema& migrate(unsigned from_version, void (*convert)(scene_properties&)) {
