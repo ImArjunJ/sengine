@@ -63,6 +63,7 @@ class job_system {
   private:
     void enqueue(unique_function<void()>);
     void work();
+    void shutdown() noexcept;
     bool executing_here() const noexcept;
 
   private:
@@ -71,6 +72,6 @@ class job_system {
     std::deque<unique_function<void()>> queue_;
     std::size_t active_{};
     bool closing_{};
-    std::vector<std::jthread> workers_;
+    std::vector<std::thread> workers_;
 };
 }

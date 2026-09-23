@@ -11,21 +11,21 @@ job_system::job_system(unsigned workers) {
         for (unsigned i = 0; i < workers; ++i)
             workers_.emplace_back(&job_system::work, this);
     } catch (...) {
-        {
-            std::lock_guard lock(mutex_);
-            closing_ = true;
-        }
-        ready_.notify_all();
-        workers_.clear();
+        shutdown();
         throw;
     }
 }
 job_system::~job_system() {
+    shutdown();
+}
+void job_system::shutdown() noexcept {
     {
         std::lock_guard lock(mutex_);
         closing_ = true;
     }
     ready_.notify_all();
+    for (auto& worker : workers_)
+        worker.join();
     workers_.clear();
 }
 bool job_system::executing_here() const noexcept {
