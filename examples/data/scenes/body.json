@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "entities": [
+    {"id": "anchor"},
+    {
+      "id": "body",
+      "parent": "anchor",
+      "transform": {"position": [0, 2, 0]},
+      "components": {
+        "body": {"version": 1, "fields": {"mass": 1, "anchor": "anchor"}}
+      }
+    }
+  ]
+}

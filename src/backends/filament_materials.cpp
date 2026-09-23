@@ -1,5 +1,6 @@
 #include "backends/filament_scene_state.hpp"
 #include "backends/filament_values.hpp"
+#include "backends/material_package.hpp"
 namespace sengine {
 using namespace filament_detail;
 material_id material_at(scene& s, scene_node n, unsigned slot) {
@@ -13,6 +14,11 @@ material_id material_at(scene& s, scene_node n, unsigned slot) {
 material_id load_material(scene& s, const std::filesystem::path& path) {
     auto& p = scene_data(s);
     auto data = bytes(path);
+    try {
+        validate_material_package(std::as_bytes(std::span(data)), p.engine.getBackend());
+    } catch (const std::exception& error) {
+        throw std::runtime_error(path.string() + ": " + error.what());
+    }
     auto* shader = filament::Material::Builder().package(data.data(), data.size()).build(p.engine);
     if (!shader)
         throw std::runtime_error("Invalid material: " + path.string());

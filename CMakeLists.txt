@@ -22,6 +22,9 @@ add_library(sengine
   src/math.cpp
   src/primitives.cpp
   src/runtime.cpp
+  src/scene_document.cpp
+  src/scene_loader.cpp
+  src/scene_schema.cpp
   src/timing.cpp
   src/world.cpp)
 add_library(sengine::sengine ALIAS sengine)
@@ -29,6 +32,7 @@ target_compile_features(sengine PUBLIC cxx_std_23)
 find_package(Threads REQUIRED)
 target_link_libraries(sengine PRIVATE Threads::Threads)
 target_include_directories(sengine PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
+target_include_directories(sengine SYSTEM PRIVATE third_party)
 set_target_properties(sengine PROPERTIES CXX_EXTENSIONS OFF)
 if(MSVC)
   target_compile_options(sengine PRIVATE /W4 /permissive-)
@@ -47,7 +51,8 @@ if(sengine_graphics)
     src/backends/${sengine_window_backend}_window.cpp src/backends/sdl_audio.cpp
     src/backends/filament_renderer.cpp src/backends/filament_hud.cpp src/backends/font_atlas.cpp
     src/backends/filament_nodes.cpp src/backends/filament_lights.cpp src/backends/filament_scene.cpp src/backends/filament_materials.cpp
-    src/backends/filament_meshes.cpp src/backends/filament_animation.cpp src/backends/filament_environment.cpp)
+    src/backends/filament_meshes.cpp src/backends/filament_animation.cpp src/backends/filament_environment.cpp
+    src/backends/material_package.cpp)
   target_include_directories(sengine PRIVATE src)
   target_compile_definitions(sengine PRIVATE sengine_default_graphics=${sengine_graphics_api})
   target_link_libraries(sengine PRIVATE sengine::filament SDL3::SDL3 Threads::Threads Freetype::Freetype PNG::PNG)
@@ -85,6 +90,8 @@ endif()
 if(PROJECT_IS_TOP_LEVEL)
   add_executable(sengine_orbit examples/orbit.cpp)
   target_link_libraries(sengine_orbit PRIVATE sengine)
+  add_executable(sengine_scenes examples/scenes.cpp)
+  target_link_libraries(sengine_scenes PRIVATE sengine)
   file(COPY examples/data DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
 
@@ -97,6 +104,7 @@ write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/sengine-config-ver
   COMPATIBILITY SameMajorVersion)
 install(TARGETS sengine EXPORT sengine-targets ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES third_party/nlohmann/LICENSE.MIT DESTINATION ${CMAKE_INSTALL_DATADIR}/sengine/licenses/nlohmann-json)
 install(EXPORT sengine-targets NAMESPACE sengine:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/sengine)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/sengine-config.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/sengine-config-version.cmake" cmake/filament.cmake

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "id": "player",
+      "transform": {"position": [0, 0.3, 3.5], "scale": [0.6, 0.6, 0.6]},
+      "components": {
+        "surface": {"version": 1, "fields": {"material": "materials/surface.filamat", "color": [0.25, 0.8, 0.88, 1]}}
+      }
+    }
+  ],
+  "instances": [
+    {
+      "id": "board",
+      "source": "data/relay/board.json",
+      "overrides": {
+        "floor": {"components": {"surface": {"version": 1, "fields": {"color": [0.2, 0.16, 0.23, 1]}}}}
+      }
+    },
+    {"id": "southwest", "source": "data/relay/cell.json", "transform": {"position": [-3, 0, 3]}},
+    {"id": "southeast", "source": "data/relay/cell.json", "transform": {"position": [3, 0, 3]}},
+    {"id": "west", "source": "data/relay/cell.json", "transform": {"position": [-3, 0, 0]}},
+    {"id": "east", "source": "data/relay/cell.json", "transform": {"position": [3, 0, 0]}},
+    {"id": "northwest", "source": "data/relay/cell.json", "transform": {"position": [-3, 0, -3]}},
+    {"id": "northeast", "source": "data/relay/cell.json", "transform": {"position": [3, 0, -3]}}
+  ]
+}

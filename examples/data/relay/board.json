@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "id": "floor",
+      "transform": {"position": [0, -0.25, 0], "scale": [10, 0.5, 10]},
+      "components": {
+        "surface": {"version": 1, "fields": {"material": "materials/surface.filamat", "color": [0.12, 0.17, 0.22, 1]}}
+      }
+    }
+  ]
+}

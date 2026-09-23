@@ -11,6 +11,7 @@ class component_pool_base {
   public:
     virtual ~component_pool_base() = default;
     virtual void erase(std::uint32_t index) noexcept = 0;
+    virtual bool contains(std::uint32_t index) const noexcept = 0;
     virtual std::span<const std::uint32_t> entities() const noexcept = 0;
 };
 
@@ -52,6 +53,7 @@ template <class component> class component_pool final : public component_pool_ba
         sparse_[index] = missing;
     }
     std::span<const std::uint32_t> entities() const noexcept override { return entities_; }
+    bool contains(std::uint32_t index) const noexcept override { return get(index) != nullptr; }
 
   private:
     static constexpr auto missing = std::numeric_limits<std::size_t>::max();

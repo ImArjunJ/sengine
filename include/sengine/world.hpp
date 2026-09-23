@@ -37,6 +37,7 @@ class world {
     bool destroy(entity);
     std::size_t size() const noexcept { return size_; }
     std::vector<entity> entities() const;
+    std::vector<std::type_index> component_types(entity) const;
     const std::string& name(entity) const;
     void rename(entity, std::string);
     entity parent(entity) const;

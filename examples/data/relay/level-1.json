@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "id": "player",
+      "transform": {"position": [0, 0.3, 3.5], "scale": [0.6, 0.6, 0.6]},
+      "components": {
+        "surface": {"version": 1, "fields": {"material": "materials/surface.filamat", "color": [0.25, 0.8, 0.88, 1]}}
+      }
+    }
+  ],
+  "instances": [
+    {"id": "board", "source": "data/relay/board.json"},
+    {"id": "west", "source": "data/relay/cell.json", "transform": {"position": [-3, 0, 2]}},
+    {"id": "east", "source": "data/relay/cell.json", "transform": {"position": [3, 0, 2]}},
+    {"id": "northwest", "source": "data/relay/cell.json", "transform": {"position": [-3, 0, -2]}},
+    {"id": "northeast", "source": "data/relay/cell.json", "transform": {"position": [3, 0, -2]}}
+  ]
+}

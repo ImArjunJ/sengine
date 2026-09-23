@@ -44,8 +44,11 @@ void world::require_mutable() const {
 }
 entity world::create(std::string name, entity parent) {
     require_mutable();
-    if (parent)
-        require(parent).children.reserve(require(parent).children.size() + 1);
+    if (parent) {
+        auto& children = require(parent).children;
+        if (children.size() == children.capacity())
+            children.reserve(children.size() + std::max(std::size_t{1}, children.size() / 2));
+    }
     if (records_.size() >= std::numeric_limits<std::uint32_t>::max() && available_.empty())
         throw std::overflow_error("Entity capacity exhausted");
     const auto index = available_.empty() ? std::uint32_t(records_.size()) : available_.back();
@@ -104,6 +107,14 @@ std::vector<entity> world::entities() const {
 }
 const std::string& world::name(entity id) const {
     return require(id).name;
+}
+std::vector<std::type_index> world::component_types(entity id) const {
+    require(id);
+    std::vector<std::type_index> result;
+    for (const auto& [type, pool] : pools_)
+        if (pool->contains(id.index))
+            result.push_back(type);
+    return result;
 }
 void world::rename(entity id, std::string name) {
     require(id).name = std::move(name);

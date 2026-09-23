@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "instances": [
+    {"id": "left", "source": "scenes/body.json", "transform": {"position": [-2, 0, 0]}},
+    {
+      "id": "right",
+      "source": "scenes/body.json",
+      "transform": {"position": [2, 0, 0]},
+      "overrides": {
+        "body": {"components": {"body": {"version": 1, "fields": {"mass": 3}}}}
+      }
+    }
+  ]
+}

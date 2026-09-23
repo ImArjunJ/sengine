@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "id": "cell",
+      "transform": {"position": [0, 0.35, 0], "scale": [0.4, 0.7, 0.4]},
+      "components": {
+        "surface": {"version": 1, "fields": {"material": "materials/surface.filamat", "color": [1, 0.64, 0.23, 1]}},
+        "pickup": {"version": 1, "fields": {}}
+      }
+    }
+  ]
+}

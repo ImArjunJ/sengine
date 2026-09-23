@@ -2,6 +2,7 @@
 #include "backends/filament_access.hpp"
 #include "backends/font_atlas.hpp"
 #include "backends/hud_geometry.hpp"
+#include "backends/material_package.hpp"
 #include "sengine/native_hud.hpp"
 #include <algorithm>
 #include <array>
@@ -99,6 +100,11 @@ struct native_hud::impl {
         std::vector<char> data((std::istreambuf_iterator<char>(in)), {});
         if (data.empty())
             throw std::runtime_error("HUD material unavailable");
+        try {
+            filament_detail::validate_material_package(std::as_bytes(std::span(data)), e.getBackend());
+        } catch (const std::exception& error) {
+            throw std::runtime_error(path.string() + ": " + error.what());
+        }
         material = Material::Builder().package(data.data(), data.size()).build(e);
         if (!material)
             throw std::runtime_error("Invalid HUD material");
