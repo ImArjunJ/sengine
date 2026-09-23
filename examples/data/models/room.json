@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "instances": [
+    {
+      "id": "left",
+      "source": "data/models/mobile.json",
+      "transform": {
+        "position": [
+          -1.7,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "right",
+      "source": "data/models/mobile.json",
+      "transform": {
+        "position": [
+          1.7,
+          0,
+          0
+        ]
+      },
+      "overrides": {
+        "model": {
+          "components": {
+            "render.animation": {
+              "version": 1,
+              "fields": {
+                "clip": "Sway",
+                "speed": 0.6
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

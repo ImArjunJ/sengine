@@ -43,14 +43,17 @@ jobs:
           xvfb-run -a -s "-screen 0 1200x800x24" ./build/sengine_relay /tmp/relay-1.png 1
           xvfb-run -a -s "-screen 0 1200x800x24" ./build/sengine_relay /tmp/relay-2.png 2
           xvfb-run -a -s "-screen 0 1200x800x24" ./build/sengine_physics_demo /tmp/physics.png
+          xvfb-run -a -s "-screen 0 1200x800x24" ./build/sengine_models /tmp/models.png
       - if: runner.os == 'macOS'
         run: |
           ./build/sengine_relay /tmp/relay-1.png 1
           ./build/sengine_relay /tmp/relay-2.png 2
           ./build/sengine_physics_demo /tmp/physics.png
+          ./build/sengine_models /tmp/models.png
       - uses: actions/upload-artifact@v4
         with:
           name: examples-${{ matrix.graphics }}-${{ matrix.window }}
           path: |
             /tmp/relay-*.png
             /tmp/physics.png
+            /tmp/models.png

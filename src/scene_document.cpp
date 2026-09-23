@@ -56,8 +56,8 @@ scene_value property(const json& value) {
     if (value.is_string())
         return value.get<std::string>();
     if (value.is_array()) {
-        if (value.size() > 16)
-            throw std::invalid_argument("Numeric vectors contain at most 16 values");
+        if (value.size() > 256)
+            throw std::invalid_argument("Numeric vectors contain at most 256 values");
         std::vector<double> result;
         for (const auto& item : value) {
             if (!item.is_number())

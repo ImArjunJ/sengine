@@ -83,6 +83,27 @@ template <std::floating_point value> void scene_decode(const scene_value& data, 
 inline void scene_decode(const scene_value& data, std::string& result) {
     result = scene_string(data);
 }
+template <std::floating_point value> scene_value scene_encode(const std::vector<value>& data) {
+    if (data.size() > 256)
+        throw std::invalid_argument("Numeric vectors contain at most 256 values");
+    std::vector<double> result;
+    result.reserve(data.size());
+    for (value item : data)
+        result.push_back(std::get<double>(scene_encode(item)));
+    return result;
+}
+template <std::floating_point value> void scene_decode(const scene_value& data, std::vector<value>& result) {
+    const auto* numbers = std::get_if<std::vector<double>>(&data);
+    if (!numbers || numbers->size() > 256)
+        throw std::invalid_argument("Expected a numeric vector of at most 256 values");
+    result.clear();
+    result.reserve(numbers->size());
+    for (double number : *numbers) {
+        value item;
+        scene_decode(scene_value(number), item);
+        result.push_back(item);
+    }
+}
 std::string scene_reference(const std::string& prefix, const std::string& reference);
 class scene_codec {
   public:

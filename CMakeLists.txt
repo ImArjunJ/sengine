@@ -21,6 +21,7 @@ add_library(sengine
   src/input.cpp
   src/jobs.cpp
   src/math.cpp
+  src/model_schema.cpp
   src/primitives.cpp
   src/runtime.cpp
   src/scene_document.cpp
@@ -56,6 +57,7 @@ if(sengine_graphics)
   target_sources(sengine PRIVATE src/application.cpp src/native_canvas.cpp src/image_export.cpp src/platform.cpp src/world_renderer.cpp
     src/backends/${sengine_window_backend}_window.cpp src/backends/sdl_audio.cpp
     src/backends/filament_renderer.cpp src/backends/filament_hud.cpp src/backends/font_atlas.cpp
+    src/backends/filament_model.cpp src/backends/gltf_source.cpp
     src/backends/filament_nodes.cpp src/backends/filament_lights.cpp src/backends/filament_scene.cpp src/backends/filament_materials.cpp
     src/backends/filament_meshes.cpp src/backends/filament_animation.cpp src/backends/filament_environment.cpp
     src/backends/material_package.cpp)
@@ -92,6 +94,9 @@ if(sengine_graphics)
       add_dependencies(sengine_physics_demo sengine_example_materials)
       target_link_libraries(sengine_physics_demo PRIVATE sengine)
     endif()
+    add_executable(sengine_models examples/models.cpp)
+    add_dependencies(sengine_models sengine_example_materials)
+    target_link_libraries(sengine_models PRIVATE sengine)
     add_executable(sengine_relay examples/relay.cpp)
     add_dependencies(sengine_relay sengine_example_materials)
     target_link_libraries(sengine_relay PRIVATE sengine)

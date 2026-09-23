@@ -2,22 +2,22 @@
 
 A C++23 game engine with a backend-neutral API.
 
-![physics](.github/physics.png)
+![models](.github/models.png)
 
 - Scene lifecycles, fixed updates, input routing and frame pacing.
-- Entity worlds, scene files, prefabs and synchronized meshes.
+- Entity worlds, scene files, prefabs and owned model instances.
 - Rigid bodies, characters, collision layers, triggers and spatial queries.
 - Jobs, typed assets, asynchronous loading and reloads.
-- Animation, procedural geometry, glTF scenes, PBR rendering and audio.
+- Skeletal animation, morphs, crossfades, PBR rendering and audio.
 
 ```sh
 ./tools/fetch_filament.sh
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/clang_libcxx.cmake
 cmake --build build
-./build/sengine_physics_demo
+./build/sengine_models
 ```
 
-WASD moves, Space jumps, R reloads. Edit `build/data/physics` while running. [Physics](examples/physics.cpp) loads a room and falling-box prefabs; [Relay](examples/relay.cpp) has two small levels.
+Space changes animation, R reloads. [Models](examples/models.cpp) loads two instances from one prefab. Edit `build/data/models` while running. [Physics](examples/physics.cpp) demonstrates bodies and character movement.
 
 Choose `sengine_window_backend=sdl` or `glfw`, and `sengine_graphics_api=opengl`, `vulkan` or `metal`. Defaults are SDL and OpenGL on Linux, SDL and Metal on macOS. Rendering uses Filament, audio uses SDL, physics uses Jolt. Public headers expose none of them.
 
@@ -36,6 +36,8 @@ Link `sengine::sengine` through `add_subdirectory` or an installed CMake package
 
 Scenes use versioned JSON and explicit [component schemas](examples/scenes.cpp). Prefab references are local; `/` references the root scene. `capture()` saves a standalone snapshot. Load replacements before releasing the current scene.
 
-Call `physics_world::step()` at its configured fixed interval. Bodies follow world entities; `synchronize()` applies edits before queries. Characters use Y-up gravity. Spheres and capsules need uniform scale; physics rejects shear and reflection.
+`world_renderer::advance()` synchronizes model transforms, visibility and animation. Model parts select nodes by name or source index; child visibility follows its ancestors. Reloads prepare replacements before releasing existing instances. Instance storage is reused until its model is released.
 
-Keep borrowed windows, renderers, scenes and worlds alive through their dependents. World changes and physics calls stay on the owning thread. Scene transitions apply next frame; `fixed_input()` retains taps until a fixed update.
+Call `physics_world::step()` at its configured fixed interval. Characters use Y-up gravity; spheres and capsules need uniform scale.
+
+Keep borrowed windows, renderers, scenes and worlds alive through their dependents. World, model and physics calls stay on the owning thread. Scene transitions apply next frame; `fixed_input()` retains taps until a fixed update.

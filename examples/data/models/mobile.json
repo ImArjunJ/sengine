@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "id": "model",
+      "components": {
+        "render.model": {
+          "version": 1,
+          "fields": {
+            "source": "data/models/mobile.gltf"
+          }
+        },
+        "render.animation": {
+          "version": 1,
+          "fields": {
+            "clip": "Turn"
+          }
+        }
+      }
+    }
+  ]
+}
