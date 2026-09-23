@@ -1,0 +1,17 @@
+material {
+    name : surface,
+    shadingModel : lit,
+    parameters : [
+        { type : float4, name : base_color },
+        { type : float, name : roughness },
+        { type : float, name : metallic }
+    ]
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = materialParams.base_color;
+        material.roughness = materialParams.roughness;
+        material.metallic = materialParams.metallic;
+    }
+}

@@ -126,10 +126,68 @@ struct window::impl {
     std::deque<input_event> events;
     std::array<GLFWcursor*, 3> cursors{};
     void* layer{};
+
+  public:
     static impl& state(GLFWwindow* w) { return *static_cast<impl*>(glfwGetWindowUserPointer(w)); }
     void enqueue(input_event event) {
         glfwGetWindowSize(handle, &event.logical_width, &event.logical_height);
         events.push_back(std::move(event));
+    }
+    static void closed(GLFWwindow* w) {
+        glfwSetWindowShouldClose(w, false);
+        impl::state(w).enqueue({.type = event_type::close});
+    }
+    static void focused(GLFWwindow* w, int focus) {
+        impl::state(w).enqueue({.type = focus ? event_type::focus_gained : event_type::focus_lost});
+    }
+    static void key_changed(GLFWwindow* w, int key, int, int action, int) {
+        input_event event{.type = action == GLFW_RELEASE ? event_type::key_up : event_type::key_down};
+        event.key = {translate(key), action == GLFW_REPEAT};
+        impl::state(w).enqueue(std::move(event));
+    }
+    static void character_entered(GLFWwindow* w, unsigned code) {
+        auto& p = impl::state(w);
+        if (p.typing) {
+            input_event event{.type = event_type::text_input};
+            event.text = utf8(code);
+            p.enqueue(std::move(event));
+        }
+    }
+    static void pointer_moved(GLFWwindow* w, double x, double y) {
+        auto& p = impl::state(w);
+        input_event event{.type = event_type::mouse_motion};
+        event.motion = {float(x), float(y), float(x - p.last_x), float(y - p.last_y), buttons(w)};
+        p.last_x = x;
+        p.last_y = y;
+        p.enqueue(std::move(event));
+    }
+    static void button_changed(GLFWwindow* w, int button, int action, int) {
+        input_event event{.type = action == GLFW_PRESS ? event_type::mouse_down : event_type::mouse_up};
+        event.button.button = button == GLFW_MOUSE_BUTTON_LEFT     ? mouse_button::left
+                              : button == GLFW_MOUSE_BUTTON_MIDDLE ? mouse_button::middle
+                              : button == GLFW_MOUSE_BUTTON_RIGHT  ? mouse_button::right
+                                                                   : mouse_button::none;
+        impl::state(w).enqueue(std::move(event));
+    }
+    static void scrolled(GLFWwindow* w, double x, double y) {
+        double mx, my;
+        glfwGetCursorPos(w, &mx, &my);
+        input_event event{.type = event_type::mouse_wheel};
+        event.wheel = {float(x), float(y), float(mx), float(my)};
+        impl::state(w).enqueue(std::move(event));
+    }
+    void bind_window_events() {
+        glfwSetWindowCloseCallback(handle, closed);
+        glfwSetWindowFocusCallback(handle, focused);
+    }
+    void bind_keyboard_events() {
+        glfwSetKeyCallback(handle, key_changed);
+        glfwSetCharCallback(handle, character_entered);
+    }
+    void bind_pointer_events() {
+        glfwSetCursorPosCallback(handle, pointer_moved);
+        glfwSetMouseButtonCallback(handle, button_changed);
+        glfwSetScrollCallback(handle, scrolled);
     }
     ~impl() {
         for (auto* cursor : cursors)
@@ -176,49 +234,9 @@ window::window(const std::string& title, int width, int height, window_options o
     if (p.api == graphics_api::metal)
         p.layer = make_metal_layer(glfwGetCocoaWindow(p.handle));
 #endif
-    glfwSetWindowCloseCallback(p.handle, [](GLFWwindow* w) {
-        glfwSetWindowShouldClose(w, false);
-        impl::state(w).enqueue({.type = event_type::close});
-    });
-    glfwSetWindowFocusCallback(p.handle, [](GLFWwindow* w, int focus) {
-        impl::state(w).enqueue({.type = focus ? event_type::focus_gained : event_type::focus_lost});
-    });
-    glfwSetKeyCallback(p.handle, [](GLFWwindow* w, int key, int, int action, int) {
-        input_event event{.type = action == GLFW_RELEASE ? event_type::key_up : event_type::key_down};
-        event.key = {translate(key), action == GLFW_REPEAT};
-        impl::state(w).enqueue(std::move(event));
-    });
-    glfwSetCharCallback(p.handle, [](GLFWwindow* w, unsigned code) {
-        auto& p = impl::state(w);
-        if (p.typing) {
-            input_event event{.type = event_type::text_input};
-            event.text = utf8(code);
-            p.enqueue(std::move(event));
-        }
-    });
-    glfwSetCursorPosCallback(p.handle, [](GLFWwindow* w, double x, double y) {
-        auto& p = impl::state(w);
-        input_event event{.type = event_type::mouse_motion};
-        event.motion = {float(x), float(y), float(x - p.last_x), float(y - p.last_y), buttons(w)};
-        p.last_x = x;
-        p.last_y = y;
-        p.enqueue(std::move(event));
-    });
-    glfwSetMouseButtonCallback(p.handle, [](GLFWwindow* w, int button, int action, int) {
-        input_event event{.type = action == GLFW_PRESS ? event_type::mouse_down : event_type::mouse_up};
-        event.button.button = button == GLFW_MOUSE_BUTTON_LEFT     ? mouse_button::left
-                              : button == GLFW_MOUSE_BUTTON_MIDDLE ? mouse_button::middle
-                              : button == GLFW_MOUSE_BUTTON_RIGHT  ? mouse_button::right
-                                                                   : mouse_button::none;
-        impl::state(w).enqueue(std::move(event));
-    });
-    glfwSetScrollCallback(p.handle, [](GLFWwindow* w, double x, double y) {
-        double mx, my;
-        glfwGetCursorPos(w, &mx, &my);
-        input_event event{.type = event_type::mouse_wheel};
-        event.wheel = {float(x), float(y), float(mx), float(my)};
-        impl::state(w).enqueue(std::move(event));
-    });
+    p.bind_window_events();
+    p.bind_keyboard_events();
+    p.bind_pointer_events();
 }
 window::~window() = default;
 bool window::poll(input_event& event) {

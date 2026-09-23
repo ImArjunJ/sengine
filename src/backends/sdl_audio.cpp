@@ -4,6 +4,8 @@ namespace sengine {
 struct audio_stream::impl {
     SDL_AudioStream* stream{};
     bool initialized{};
+
+  public:
     ~impl() {
         if (stream)
             SDL_DestroyAudioStream(stream);

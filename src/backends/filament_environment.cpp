@@ -1,4 +1,5 @@
 #include "filament_environment.hpp"
+#include "backends/buffer_storage.hpp"
 #include <backend/PixelBufferDescriptor.h>
 #include <cmath>
 #include <filament-iblprefilter/IBLPrefilterContext.h>
@@ -59,6 +60,7 @@ struct filament_environment::impl {
     IndirectLight* light{};
     Skybox* sky{};
 
+  public:
     impl(Engine& e, Scene& s) : engine(e), scene(s) {}
     ~impl() {
         scene.setIndirectLight(nullptr);
@@ -102,9 +104,7 @@ filament_environment::filament_environment(Engine& engine, Scene& scene, const e
     p.dome->setImage(engine, 0, 0, 0, 0, size, size, 6,
                      backend::PixelBufferDescriptor(
                          data->data(), data->size() * sizeof(float), backend::PixelDataFormat::RGBA,
-                         backend::PixelDataType::FLOAT,
-                         [](void*, size_t, void* buffer) { delete static_cast<std::vector<float>*>(buffer); },
-                         data));
+                         backend::PixelDataType::FLOAT, filament_detail::release_vector<float>, data));
     p.dome->generateMipmaps(engine);
     p.reflections = filter_target(engine, size, 5);
     p.irradiance = filter_target(engine, 32, 1);

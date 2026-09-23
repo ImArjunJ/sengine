@@ -10,6 +10,8 @@ namespace sengine {
 class renderer;
 struct scene_node {
     std::uint32_t value{};
+
+  public:
     explicit operator bool() const { return value != 0; }
 };
 struct scene_asset {
@@ -39,6 +41,13 @@ struct mesh_data {
     bounds volume;
     bool reverse_bitangent{};
 };
+enum class light_kind { directional, point, spot };
+struct light_options {
+    light_kind kind{light_kind::point};
+    float3 color{1}, position{}, direction{0, -1, 0};
+    float intensity{1000}, radius{10}, inner_cone{.3f}, outer_cone{.6f};
+    bool shadows{true};
+};
 struct sun_options {
     float3 color{1};
     float intensity{10000};
@@ -65,6 +74,11 @@ class scene {
     std::unique_ptr<impl> impl_;
     friend impl& scene_data(scene&);
 };
+scene_node create_node(scene&, scene_node parent = {});
+void set_parent(scene&, scene_node child, scene_node parent, bool preserve_world = true);
+void destroy_node(scene&, scene_node);
+scene_node add_light(scene&, const light_options&);
+void update_light(scene&, scene_node, const light_options&);
 scene_asset load_scene(scene&, const std::filesystem::path&, bool visible = true);
 std::span<const scene_node> nodes(scene&, scene_asset);
 std::string node_name(scene&, scene_asset, scene_node);

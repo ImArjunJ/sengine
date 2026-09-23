@@ -1,5 +1,6 @@
 #pragma once
 #include "sengine/events.hpp"
+#include "sengine/native_hud.hpp"
 #include <string>
 namespace sengine::drawing {
 struct point2 {
@@ -38,7 +39,9 @@ void draw_circle_lines(point2, float, color);
 void draw_ellipse(int, int, float, float, color);
 void draw_ellipse_lines(int, int, float, float, color);
 void draw_text_ex(font, const char*, point2, float, float, color);
-void draw_paper_rect(rect);
+hud_image upload_image(unsigned width, unsigned height, std::span<const std::uint8_t> rgba);
+void draw_image_rect(hud_image, rect, color tint = {255, 255, 255, 255});
+void draw_tiled_image(hud_image, rect, point2 tile_pixels, color tint = {255, 255, 255, 255});
 point2 measure_text_ex(font, const char*, float, float);
 color fade(color, float);
 color color_lerp(color, color, float);

@@ -20,6 +20,8 @@ struct window::impl {
 #ifdef __APPLE__
     SDL_MetalView metal{};
 #endif
+
+  public:
     ~impl() {
         for (auto* cursor : cursors)
             if (cursor)

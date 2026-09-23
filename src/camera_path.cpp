@@ -5,6 +5,11 @@
 
 namespace sengine {
 namespace {
+void append_corners(std::vector<point>& nodes, box box) {
+    for (unsigned i = 0; i < 8; ++i)
+        nodes.push_back(
+            {i & 1 ? box.high.x : box.low.x, i & 2 ? box.high.y : box.low.y, i & 4 ? box.high.z : box.low.z});
+}
 float distance(point a, point b) {
     return std::hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
@@ -20,8 +25,8 @@ bool clear(point from, point to, std::span<const box> obstacles) {
     if (length < .00001f)
         return true;
     point ray{(to.x - from.x) / length, (to.y - from.y) / length, (to.z - from.z) / length};
-    return std::ranges::none_of(obstacles,
-                                [&](box box) { return intersect(from, ray, box, length).has_value(); });
+    return std::ranges::none_of(
+        obstacles, [from, ray, length](box box) { return intersect(from, ray, box, length).has_value(); });
 }
 }
 camera_path plan_path(point from, point to, std::span<const box> obstacles, float clearance) {
@@ -41,16 +46,11 @@ camera_path plan_path(point from, point to, std::span<const box> obstacles, floa
     const box region = padded({{std::min(from.x, to.x), std::min(from.y, to.y), std::min(from.z, to.z)},
                                {std::max(from.x, to.x), std::max(from.y, to.y), std::max(from.z, to.z)}},
                               .5f);
-    auto corners = [&](box box) {
-        for (unsigned i = 0; i < 8; ++i)
-            nodes.push_back({i & 1 ? box.high.x : box.low.x, i & 2 ? box.high.y : box.low.y,
-                             i & 4 ? box.high.z : box.low.z});
-    };
-    corners({from, to});
+    append_corners(nodes, {from, to});
     for (auto box : bounds)
         if (box.low.x <= region.high.x && box.high.x >= region.low.x && box.low.y <= region.high.y &&
             box.high.y >= region.low.y && box.low.z <= region.high.z && box.high.z >= region.low.z)
-            corners(padded(box, .002f));
+            append_corners(nodes, padded(box, .002f));
     std::vector<float> costs(nodes.size(), std::numeric_limits<float>::infinity());
     std::vector<size_t> previous(nodes.size(), nodes.size());
     std::vector<bool> visited(nodes.size());

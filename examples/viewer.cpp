@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
         sengine::load_scene(scene, argv[1]);
         sengine::add_sun(scene, {});
         sengine::set_environment(scene, {});
-        sengine::camera_pose camera{.eye = {0, 1.5f, 4}, .direction = {0, -.1f, -1}};
+        sengine::camera_view camera{.eye = {0, 1.5f, 4}, .direction = {0, -.1f, -1}};
         const auto start = std::chrono::steady_clock::now();
         unsigned frames = 0;
         while (true) {

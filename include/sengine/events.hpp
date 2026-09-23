@@ -97,6 +97,8 @@ inline constexpr unsigned left_button = 1, middle_button = 2, right_button = 4;
 enum class cursor_shape { arrow, hand, text };
 struct key_state {
     std::array<bool, static_cast<unsigned>(key_code::count)> values{};
+
+  public:
     bool operator[](key_code code) const { return values.at(static_cast<unsigned>(code)); }
     bool& operator[](key_code code) { return values.at(static_cast<unsigned>(code)); }
     void fill(bool value) { values.fill(value); }

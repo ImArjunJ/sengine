@@ -18,6 +18,12 @@
 #include <vector>
 
 namespace sengine {
+namespace {
+void finish_readback(void*, std::size_t, void* context) {
+    *static_cast<bool*>(context) = true;
+}
+}
+
 struct renderer::impl {
     filament::Engine* engine{};
     filament::SwapChain* swap{};
@@ -26,6 +32,8 @@ struct renderer::impl {
     filament::View* view{};
     filament::Camera* camera{};
     utils::Entity camera_entity{};
+
+  public:
     ~impl() {
         if (!engine)
             return;
@@ -141,14 +149,22 @@ filament::Camera& backend_access::camera(renderer& r) {
 filament::Renderer& backend_access::drawing(renderer& r) {
     return *r.impl_->renderer;
 }
-bool renderer::frame(const camera_pose& camera, unsigned width, unsigned height, float near_plane,
+bool renderer::frame(const camera_view& camera, unsigned width, unsigned height, float near_plane,
                      float far_plane, native_hud* overlay, const std::filesystem::path& capture,
                      bool capture_overlay) {
     if (!width || !height)
         return false;
     if (!std::isfinite(near_plane) || !std::isfinite(far_plane) || near_plane <= 0 ||
-        far_plane <= near_plane || !std::isfinite(camera.fov) || camera.fov <= 0 || camera.fov >= 180)
+        far_plane <= near_plane || unsigned(camera.projection) > unsigned(projection_kind::orthographic))
         throw std::invalid_argument("Invalid camera projection");
+    for (auto vector : {camera.eye, camera.direction, camera.up})
+        if (!std::isfinite(vector.x) || !std::isfinite(vector.y) || !std::isfinite(vector.z))
+            throw std::invalid_argument("Invalid camera vector");
+    const float3 direction{camera.direction.x, camera.direction.y, camera.direction.z};
+    const float3 up{camera.up.x, camera.up.y, camera.up.z};
+    const auto perpendicular = cross(direction, up);
+    if (!std::isfinite(length(perpendicular)) || length(perpendicular) <= .000001f)
+        throw std::invalid_argument("Camera direction and up must be independent");
     std::vector<std::uint8_t> pixels;
     if (!capture.empty()) {
         if (std::size_t(width) > std::numeric_limits<std::size_t>::max() / height / 4)
@@ -157,10 +173,21 @@ bool renderer::frame(const camera_pose& camera, unsigned width, unsigned height,
     }
     auto& p = *impl_;
     p.view->setViewport({0, 0, width, height});
-    p.camera->setProjection(camera.fov, double(width) / height, near_plane, far_plane,
-                            filament::Camera::Fov::VERTICAL);
+    const double aspect = double(width) / height;
+    if (camera.projection == projection_kind::orthographic) {
+        if (!std::isfinite(camera.vertical_size) || camera.vertical_size <= 0)
+            throw std::invalid_argument("Invalid orthographic size");
+        const double half_height = camera.vertical_size * .5;
+        p.camera->setProjection(filament::Camera::Projection::ORTHO, -half_height * aspect,
+                                half_height * aspect, -half_height, half_height, near_plane, far_plane);
+    } else {
+        if (!std::isfinite(camera.fov) || camera.fov <= 0 || camera.fov >= 180)
+            throw std::invalid_argument("Invalid perspective field of view");
+        p.camera->setProjection(camera.fov, aspect, near_plane, far_plane, filament::Camera::Fov::VERTICAL);
+    }
     const auto eye = camera.eye, dir = camera.direction;
-    p.camera->lookAt({eye.x, eye.y, eye.z}, {eye.x + dir.x, eye.y + dir.y, eye.z + dir.z});
+    p.camera->lookAt({eye.x, eye.y, eye.z}, {eye.x + dir.x, eye.y + dir.y, eye.z + dir.z},
+                     {camera.up.x, camera.up.y, camera.up.z});
     if (!p.renderer->beginFrame(p.swap))
         return false;
     p.renderer->render(p.view);
@@ -171,9 +198,7 @@ bool renderer::frame(const camera_pose& camera, unsigned width, unsigned height,
         p.renderer->readPixels(0, 0, width, height,
                                filament::backend::PixelBufferDescriptor(
                                    pixels.data(), pixels.size(), filament::backend::PixelDataFormat::RGBA,
-                                   filament::backend::PixelDataType::UBYTE,
-                                   [](void*, size_t, void* context) { *static_cast<bool*>(context) = true; },
-                                   &read_done));
+                                   filament::backend::PixelDataType::UBYTE, finish_readback, &read_done));
     if (overlay && !capture_overlay)
         overlay->render(*this);
     p.renderer->endFrame();

@@ -2,20 +2,36 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <deque>
 #include <numbers>
 #include <stdexcept>
+#include <utility>
+namespace sengine {
+struct canvas_state {
+    window& display;
+    native_hud& hud;
+    int width{}, height{};
+    float dpi{1}, delta{};
+    hud_input input{};
+    drawing::transform transform{};
+    key_state pressed{}, down{};
+    std::deque<unsigned> text;
+};
+}
 namespace {
 using namespace sengine::drawing;
-using sengine::native_canvas;
-native_canvas* canvas{};
-native_canvas& context() {
-    if (!canvas)
-        throw std::logic_error("UI canvas is not bound");
-    return *canvas;
+thread_local sengine::canvas_state* active_canvas{};
+sengine::canvas_state& context() {
+    if (!active_canvas)
+        throw std::logic_error("UI drawing requires an active canvas binding");
+    return *active_canvas;
 }
 point2 position(point2 p) {
     auto t = context().transform;
     return {(p.x - t.target.x) * t.zoom + t.offset.x, (p.y - t.target.y) * t.zoom + t.offset.y};
+}
+unsigned char mix_channel(int from, int to, float fraction) {
+    return static_cast<unsigned char>(std::clamp(from + (to - from) * fraction, 0.f, 255.f));
 }
 sengine::ink to_ink(color c) {
     return {c.r / 255.f, c.g / 255.f, c.b / 255.f, c.a / 255.f};
@@ -24,7 +40,7 @@ void triangle(point2 a, point2 b, point2 c, color ca, color cb, color cc) {
     a = position(a);
     b = position(b);
     c = position(c);
-    context().hud->triangle({a.x, a.y}, {b.x, b.y}, {c.x, c.y}, to_ink(ca), to_ink(cb), to_ink(cc));
+    context().hud.triangle({a.x, a.y}, {b.x, b.y}, {c.x, c.y}, to_ink(ca), to_ink(cb), to_ink(cc));
 }
 void ellipse(point2 c, float rx, float ry, color color, bool outline) {
     constexpr float tau = 2 * std::numbers::pi_v<float>;
@@ -41,36 +57,57 @@ void ellipse(point2 c, float rx, float ry, color color, bool outline) {
 }
 }
 namespace sengine {
-native_canvas::native_canvas() {
-    canvas = this;
+native_canvas::native_canvas(window& display, native_hud& hud)
+    : state_(std::make_unique<canvas_state>(display, hud)) {}
+native_canvas::~native_canvas() = default;
+native_canvas::binding::binding(canvas_state& state) : previous_(std::exchange(active_canvas, &state)) {}
+native_canvas::binding::~binding() {
+    active_canvas = previous_;
 }
-native_canvas::~native_canvas() {
-    if (canvas == this)
-        canvas = nullptr;
+native_canvas::binding native_canvas::activate() const {
+    return binding(*state_);
+}
+int native_canvas::width() const {
+    return state_->width;
+}
+int native_canvas::height() const {
+    return state_->height;
+}
+hud_input native_canvas::pointer() const {
+    return state_->input;
+}
+bool native_canvas::key_pressed(key_code key) const {
+    return state_->pressed[key];
+}
+bool native_canvas::key_down(key_code key) const {
+    return state_->down[key];
+}
+bool native_canvas::consume_key_press(key_code key) {
+    return std::exchange(state_->pressed[key], false);
 }
 void native_canvas::begin_events() {
-    pressed.fill(false);
-    text.clear();
+    state_->pressed.fill(false);
+    state_->text.clear();
 }
 void native_canvas::event(const sengine::input_event& e) {
     if (e.type == sengine::event_type::mouse_motion || e.type == sengine::event_type::mouse_wheel) {
         int logical_width = e.logical_width, logical_height = e.logical_height;
         float x = e.type == sengine::event_type::mouse_motion ? e.motion.x : e.wheel.mouse_x;
         float y = e.type == sengine::event_type::mouse_motion ? e.motion.y : e.wheel.mouse_y;
-        input.x = x * width / std::max(1, logical_width);
-        input.y = y * height / std::max(1, logical_height);
+        state_->input.x = x * state_->width / std::max(1, logical_width);
+        state_->input.y = y * state_->height / std::max(1, logical_height);
     }
     if (e.type == sengine::event_type::key_down) {
-        down[e.key.code] = true;
+        state_->down[e.key.code] = true;
         if (!e.key.repeat)
-            pressed[e.key.code] = true;
+            state_->pressed[e.key.code] = true;
     }
     if (e.type == sengine::event_type::key_up)
-        down[e.key.code] = false;
+        state_->down[e.key.code] = false;
     if (e.type == sengine::event_type::focus_lost) {
-        down.fill(false);
-        pressed.fill(false);
-        text.clear();
+        state_->down.fill(false);
+        state_->pressed.fill(false);
+        state_->text.clear();
     }
     if (e.type == sengine::event_type::text_input) {
         const auto* p = reinterpret_cast<const unsigned char*>(e.text.c_str());
@@ -89,20 +126,18 @@ void native_canvas::event(const sengine::input_event& e) {
             }
             while (n-- && *p)
                 c = (c << 6) | (*p++ & 63);
-            text.push_back(c);
+            state_->text.push_back(c);
         }
     }
 }
-void native_canvas::draw(native_hud& h, int w, int hh, float scale, float dt, hud_input in, bool focused) {
-    hud = &h;
-    width = w;
-    height = hh;
-    dpi = scale;
-    delta = dt;
-    input = focused ? in : hud_input{};
-    transform = {};
-    transform.zoom = 1;
-    canvas = this;
+void native_canvas::begin_frame(int width, int height, float dpi, float delta, hud_input input,
+                                bool focused) {
+    state_->width = width;
+    state_->height = height;
+    state_->dpi = dpi;
+    state_->delta = delta;
+    state_->input = focused ? input : hud_input{};
+    state_->transform = {};
 }
 }
 namespace sengine::drawing {
@@ -114,15 +149,15 @@ void end_transform() {
     context().transform.zoom = 1;
 }
 void begin_scissor_mode(int x, int y, int w, int h) {
-    context().hud->clip(x, y, w, h);
+    context().hud.clip(x, y, w, h);
 }
 void end_scissor_mode() {
-    context().hud->clear_clip();
+    context().hud.clear_clip();
 }
 void draw_rectangle_rec(rect r, color c) {
     auto p = position({r.x, r.y});
     float z = context().transform.zoom;
-    context().hud->rectangle(p.x, p.y, r.width * z, r.height * z, to_ink(c));
+    context().hud.rectangle(p.x, p.y, r.width * z, r.height * z, to_ink(c));
 }
 void draw_rectangle_lines_ex(rect r, float t, color c) {
     draw_line_ex({r.x, r.y}, {r.x + r.width, r.y}, t, c);
@@ -161,7 +196,7 @@ void draw_rectangle_gradient_v(int x, int y, int w, int h, color a, color b) {
 void draw_line_ex(point2 a, point2 b, float t, color c) {
     a = position(a);
     b = position(b);
-    context().hud->line(a.x, a.y, b.x, b.y, t * context().transform.zoom, to_ink(c));
+    context().hud.line(a.x, a.y, b.x, b.y, t * context().transform.zoom, to_ink(c));
 }
 void draw_triangle(point2 a, point2 b, point2 c, color color) {
     triangle(a, b, c, color, color, color);
@@ -186,25 +221,32 @@ void draw_ellipse_lines(int x, int y, float rx, float ry, color c) {
 }
 void draw_text_ex(font font, const char* text, point2 p, float size, float, color color) {
     p = position(p);
-    context().hud->text(p.x, p.y, text, size * context().transform.zoom, to_ink(color), font.face);
+    context().hud.text(p.x, p.y, text, size * context().transform.zoom, to_ink(color), font.face);
 }
 point2 measure_text_ex(font font, const char* text, float size, float) {
-    return {context().hud->measure(text, size, font.face), size};
+    return {context().hud.measure(text, size, font.face), size};
 }
-void draw_paper_rect(rect r) {
-    auto p = position({r.x, r.y});
-    context().hud->paper_texture(p.x, p.y, r.width * context().transform.zoom,
-                                 r.height * context().transform.zoom);
+hud_image upload_image(unsigned width, unsigned height, std::span<const std::uint8_t> rgba) {
+    return context().hud.upload_image(width, height, rgba);
+}
+void draw_image_rect(hud_image image, rect r, color tint) {
+    const auto p = position({r.x, r.y});
+    context().hud.image(image, p.x, p.y, r.width * context().transform.zoom,
+                        r.height * context().transform.zoom, to_ink(tint));
+}
+void draw_tiled_image(hud_image image, rect r, point2 tile_pixels, color tint) {
+    const auto p = position({r.x, r.y});
+    context().hud.tiled_image(image, p.x, p.y, r.width * context().transform.zoom,
+                              r.height * context().transform.zoom, tile_pixels.x, tile_pixels.y,
+                              to_ink(tint));
 }
 color fade(color c, float a) {
     c.a = static_cast<unsigned char>(std::clamp(a, 0.f, 1.f) * c.a);
     return c;
 }
 color color_lerp(color a, color b, float t) {
-    auto mix = [t](int x, int y) {
-        return static_cast<unsigned char>(std::clamp(x + (y - x) * t, 0.f, 255.f));
-    };
-    return {mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b), mix(a.a, b.a)};
+    return {mix_channel(a.r, b.r, t), mix_channel(a.g, b.g, t), mix_channel(a.b, b.b, t),
+            mix_channel(a.a, b.a, t)};
 }
 bool check_collision_point_rec(point2 p, rect r) {
     return p.x >= r.x && p.y >= r.y && p.x < r.x + r.width && p.y < r.y + r.height;
@@ -271,8 +313,7 @@ const char* codepoint_to_utf8(int cp, int* size) {
     return text;
 }
 void set_mouse_cursor(cursor cursor) {
-    if (context().display)
-        context().display->cursor(cursor);
+    context().display.cursor(cursor);
 }
 
 }

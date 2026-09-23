@@ -12,9 +12,21 @@ else()
 endif()
 set(sengine_graphics_api ${default_graphics} CACHE STRING "Graphics API: opengl, vulkan or metal")
 set_property(CACHE sengine_graphics_api PROPERTY STRINGS opengl vulkan metal)
-add_library(sengine src/geometry.cpp src/explorer.cpp src/camera_path.cpp src/math.cpp)
+add_library(sengine
+  src/animation.cpp
+  src/assets.cpp
+  src/camera_path.cpp
+  src/geometry.cpp
+  src/input.cpp
+  src/jobs.cpp
+  src/math.cpp
+  src/primitives.cpp
+  src/timing.cpp
+  src/world.cpp)
 add_library(sengine::sengine ALIAS sengine)
 target_compile_features(sengine PUBLIC cxx_std_23)
+find_package(Threads REQUIRED)
+target_link_libraries(sengine PRIVATE Threads::Threads)
 target_include_directories(sengine PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
 set_target_properties(sengine PROPERTIES CXX_EXTENSIONS OFF)
 if(MSVC)
@@ -32,8 +44,9 @@ if(sengine_graphics)
   find_package(PNG REQUIRED)
   target_sources(sengine PRIVATE src/native_canvas.cpp src/image_export.cpp src/platform.cpp
     src/backends/${sengine_window_backend}_window.cpp src/backends/sdl_audio.cpp
-    src/backends/filament_renderer.cpp src/backends/filament_hud.cpp
-    src/backends/filament_scene.cpp src/backends/filament_environment.cpp)
+    src/backends/filament_renderer.cpp src/backends/filament_hud.cpp src/backends/font_atlas.cpp
+    src/backends/filament_nodes.cpp src/backends/filament_lights.cpp src/backends/filament_scene.cpp src/backends/filament_materials.cpp
+    src/backends/filament_meshes.cpp src/backends/filament_animation.cpp src/backends/filament_environment.cpp)
   target_include_directories(sengine PRIVATE src)
   target_compile_definitions(sengine PRIVATE sengine_default_graphics=${sengine_graphics_api})
   target_link_libraries(sengine PRIVATE sengine::filament SDL3::SDL3 Threads::Threads Freetype::Freetype PNG::PNG)
@@ -48,7 +61,21 @@ if(sengine_graphics)
   if(PROJECT_IS_TOP_LEVEL)
     add_executable(sengine_viewer examples/viewer.cpp)
     target_link_libraries(sengine_viewer PRIVATE sengine)
+    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/materials/surface.filamat"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/materials"
+      COMMAND "${filament_root}/bin/matc" -a all -p desktop
+        -o "${CMAKE_CURRENT_BINARY_DIR}/materials/surface.filamat"
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/materials/surface.mat"
+      DEPENDS examples/materials/surface.mat VERBATIM)
+    add_executable(sengine_gallery examples/gallery.cpp "${CMAKE_CURRENT_BINARY_DIR}/materials/surface.filamat")
+    target_link_libraries(sengine_gallery PRIVATE sengine)
   endif()
+endif()
+
+if(PROJECT_IS_TOP_LEVEL)
+  add_executable(sengine_orbit examples/orbit.cpp)
+  target_link_libraries(sengine_orbit PRIVATE sengine)
+  file(COPY examples/data DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
 
 include(GNUInstallDirs)

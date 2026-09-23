@@ -1,7 +1,12 @@
+#include "backends/buffer_storage.hpp"
 #include "backends/filament_access.hpp"
+#include "backends/font_atlas.hpp"
+#include "backends/hud_geometry.hpp"
 #include "sengine/native_hud.hpp"
 #include <algorithm>
+#include <array>
 #include <backend/PixelBufferDescriptor.h>
+#include <cmath>
 #include <filament/Camera.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
@@ -16,14 +21,10 @@
 #include <filament/VertexBuffer.h>
 #include <filament/View.h>
 #include <filament/Viewport.h>
-#include <ft2build.h>
-#include <utils/EntityManager.h>
-#include FT_FREETYPE_H
-#include <array>
-#include <cmath>
 #include <fstream>
 #include <numeric>
 #include <stdexcept>
+#include <utils/EntityManager.h>
 using namespace filament;
 namespace sengine {
 namespace {
@@ -84,11 +85,94 @@ struct native_hud::impl {
     VertexBuffer* vb{};
     IndexBuffer* ib{};
     utils::Entity entity{}, camera_entity{};
-    struct glyph {
-        float u, v, w, h, left, top, advance;
+    std::array<atlas_glyph, 768> glyph{};
+    struct image_region {
+        unsigned x, y, width, height;
     };
-    std::array<glyph, 768> glyph{};
+    std::vector<image_region> images;
+    unsigned image_x{font_atlas::width}, image_y{font_atlas::height}, image_row{}, font_height{};
+
+  public:
     explicit impl(Engine& engine) : e(engine) {}
+    void load_material(const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        std::vector<char> data((std::istreambuf_iterator<char>(in)), {});
+        if (data.empty())
+            throw std::runtime_error("HUD material unavailable");
+        material = Material::Builder().package(data.data(), data.size()).build(e);
+        if (!material)
+            throw std::runtime_error("Invalid HUD material");
+        instance = material->createInstance();
+        if (!instance)
+            throw std::runtime_error("Cannot create HUD material instance");
+    }
+    void load_font(const std::filesystem::path& font, const std::filesystem::path& display_font) {
+        auto rasterized = rasterize_fonts(font, display_font);
+        glyph = rasterized.glyphs;
+        font_height = rasterized.used_height;
+        auto pixels = std::make_unique<std::vector<std::uint8_t>>(std::move(rasterized.pixels));
+        atlas = Texture::Builder()
+                    .width(1024)
+                    .height(2048)
+                    .levels(3)
+                    .usage(Texture::Usage::SAMPLEABLE | Texture::Usage::UPLOADABLE |
+                           Texture::Usage::GEN_MIPMAPPABLE)
+                    .format(Texture::InternalFormat::RGBA8)
+                    .build(e);
+        auto* uploaded_pixels = pixels.get();
+        backend::PixelBufferDescriptor image(uploaded_pixels->data(), uploaded_pixels->size(),
+                                             backend::PixelDataFormat::RGBA, backend::PixelDataType::UBYTE,
+                                             filament_detail::release_vector<uint8_t>, uploaded_pixels);
+        pixels.release();
+        atlas->setImage(e, 0, std::move(image));
+        atlas->generateMipmaps(e);
+        instance->setParameter("atlas", atlas,
+                               TextureSampler(TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR,
+                                              TextureSampler::MagFilter::LINEAR));
+    }
+    void create_buffers() {
+        vb = VertexBuffer::Builder()
+                 .vertexCount(120000)
+                 .bufferCount(1)
+                 .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0,
+                            sizeof(hud_vertex))
+                 .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, 12,
+                            sizeof(hud_vertex))
+                 .attribute(VertexAttribute::COLOR, 0, VertexBuffer::AttributeType::FLOAT4, 20,
+                            sizeof(hud_vertex))
+                 .build(e);
+        ib = IndexBuffer::Builder().indexCount(120000).bufferType(IndexBuffer::IndexType::UINT).build(e);
+        auto* indices = new std::vector<uint32_t>(120000);
+        std::iota(indices->begin(), indices->end(), 0);
+        ib->setBuffer(e, IndexBuffer::BufferDescriptor(indices->data(), indices->size() * 4,
+                                                       filament_detail::release_vector<uint32_t>, indices));
+    }
+    void create_geometry() {
+        entity = utils::EntityManager::get().create();
+        e.getTransformManager().create(entity);
+        RenderableManager::Builder(1)
+            .boundingBox({{0, 0, 0}, {2, 2, 2}})
+            .material(0, instance)
+            .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vb, ib, 0, 0)
+            .culling(false)
+            .castShadows(false)
+            .receiveShadows(false)
+            .build(e, entity);
+    }
+    void create_view() {
+        scene = e.createScene();
+        scene->addEntity(entity);
+        camera_entity = utils::EntityManager::get().create();
+        camera = e.createCamera(camera_entity);
+        camera->setProjection(Camera::Projection::ORTHO, -1., 1., -1., 1., .1, 10.);
+        camera->lookAt({0, 0, 1}, {0, 0, 0});
+        view = e.createView();
+        view->setScene(scene);
+        view->setCamera(camera);
+        view->setPostProcessingEnabled(false);
+        view->setBlendMode(View::BlendMode::TRANSLUCENT);
+        view->setShadowingEnabled(false);
+    }
     ~impl() {
         e.destroy(view);
         e.destroy(scene);
@@ -104,134 +188,13 @@ struct native_hud::impl {
     }
 };
 native_hud::native_hud(renderer& graphics, const std::filesystem::path& material,
-                       const std::filesystem::path& font)
+                       const std::filesystem::path& font, const std::filesystem::path& display_font)
     : impl_(std::make_unique<impl>(backend_access::engine(graphics))) {
-    auto& e = backend_access::engine(graphics);
-    auto& p = *impl_;
-    std::ifstream in(material.string() + ".filamat", std::ios::binary);
-    std::vector<char> data((std::istreambuf_iterator<char>(in)), {});
-    if (data.empty())
-        throw std::runtime_error("HUD material unavailable");
-    p.material = Material::Builder().package(data.data(), data.size()).build(e);
-    p.instance = p.material->createInstance();
-    FT_Library ft{};
-    FT_Face face{};
-    if (FT_Init_FreeType(&ft) || FT_New_Face(ft, font.c_str(), 0, &face))
-        throw std::runtime_error("Cannot load native HUD font");
-    FT_Set_Pixel_Sizes(face, 0, 64);
-    auto* pixels = new std::vector<uint8_t>(1024 * 2048 * 4, 255);
-    for (size_t i = 3; i < pixels->size(); i += 4)
-        (*pixels)[i] = 0;
-    for (unsigned y = 0; y < 16; ++y)
-        for (unsigned x = 0; x < 16; ++x)
-            (*pixels)[(y * 1024 + x) * 4 + 3] = 255;
-    constexpr int padding = 4;
-    int x = 24, y = padding, row = 16;
-    for (int font_index = 0; font_index < 2; ++font_index) {
-        if (font_index) {
-            FT_Done_Face(face);
-            if (FT_New_Face(ft, (font.parent_path() / "Display.ttf").c_str(), 0, &face))
-                throw std::runtime_error("Display font unavailable");
-            FT_Set_Pixel_Sizes(face, 0, 64);
-            x = padding;
-            y += row + padding * 2;
-            row = 0;
-        }
-        for (int c = 32; c < 260; ++c) {
-            unsigned cp = c;
-            const unsigned punctuation[] = {0x2013, 0x2014, 0x2019, 0x2026};
-            if (c >= 256)
-                cp = punctuation[c - 256];
-            if (FT_Load_Char(face, cp, FT_LOAD_RENDER))
-                continue;
-            auto* g = face->glyph;
-            if (x + g->bitmap.width + padding > 1024) {
-                x = padding;
-                y += row + padding * 2;
-                row = 0;
-            }
-            if (y + g->bitmap.rows >= 1980)
-                throw std::runtime_error("Font atlas capacity exceeded");
-            for (unsigned by = 0; by < g->bitmap.rows; ++by)
-                for (unsigned bx = 0; bx < g->bitmap.width; ++bx)
-                    (*pixels)[((y + by) * 1024 + x + bx) * 4 + 3] =
-                        g->bitmap.buffer[by * g->bitmap.pitch + bx];
-            p.glyph[c + font_index * 384] = {
-                float(x) / 1024,       float(y) / 2048,      float(g->bitmap.width),  float(g->bitmap.rows),
-                float(g->bitmap_left), float(g->bitmap_top), float(g->advance.x) / 64};
-            x += g->bitmap.width + padding * 2;
-            row = std::max(row, int(g->bitmap.rows));
-        }
-    }
-
-    std::uint32_t noise = 723;
-    for (unsigned py = 1984; py < 2048; ++py)
-        for (unsigned px = 960; px < 1024; ++px) {
-            noise = noise * 1664525u + 1013904223u;
-            int delta = (int(noise >> 28) - 8) / 2;
-            auto offset = (py * 1024 + px) * 4;
-            (*pixels)[offset] = 235 + delta;
-            (*pixels)[offset + 1] = 224 + delta;
-            (*pixels)[offset + 2] = 198 + delta;
-            (*pixels)[offset + 3] = 255;
-        }
-    FT_Done_Face(face);
-    FT_Done_FreeType(ft);
-    p.atlas =
-        Texture::Builder()
-            .width(1024)
-            .height(2048)
-            .levels(3)
-            .usage(Texture::Usage::SAMPLEABLE | Texture::Usage::UPLOADABLE | Texture::Usage::GEN_MIPMAPPABLE)
-            .format(Texture::InternalFormat::RGBA8)
-            .build(e);
-    p.atlas->setImage(
-        e, 0,
-        backend::PixelBufferDescriptor(
-            pixels->data(), pixels->size(), backend::PixelDataFormat::RGBA, backend::PixelDataType::UBYTE,
-            [](void*, size_t, void* u) { delete static_cast<std::vector<uint8_t>*>(u); }, pixels));
-    p.atlas->generateMipmaps(e);
-    p.instance->setParameter(
-        "atlas", p.atlas,
-        TextureSampler(TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR, TextureSampler::MagFilter::LINEAR));
-    p.vb =
-        VertexBuffer::Builder()
-            .vertexCount(120000)
-            .bufferCount(1)
-            .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0,
-                       sizeof(hud_vertex))
-            .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, 12, sizeof(hud_vertex))
-            .attribute(VertexAttribute::COLOR, 0, VertexBuffer::AttributeType::FLOAT4, 20, sizeof(hud_vertex))
-            .build(e);
-    p.ib = IndexBuffer::Builder().indexCount(120000).bufferType(IndexBuffer::IndexType::UINT).build(e);
-    auto* indices = new std::vector<uint32_t>(120000);
-    std::iota(indices->begin(), indices->end(), 0);
-    p.ib->setBuffer(e, IndexBuffer::BufferDescriptor(
-                           indices->data(), indices->size() * 4,
-                           [](void*, size_t, void* u) { delete static_cast<std::vector<uint32_t>*>(u); },
-                           indices));
-    p.entity = utils::EntityManager::get().create();
-    e.getTransformManager().create(p.entity);
-    RenderableManager::Builder(1)
-        .boundingBox({{0, 0, 0}, {2, 2, 2}})
-        .material(0, p.instance)
-        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, p.vb, p.ib, 0, 0)
-        .culling(false)
-        .castShadows(false)
-        .receiveShadows(false)
-        .build(e, p.entity);
-    p.scene = e.createScene();
-    p.scene->addEntity(p.entity);
-    p.camera_entity = utils::EntityManager::get().create();
-    p.camera = e.createCamera(p.camera_entity);
-    p.camera->setProjection(Camera::Projection::ORTHO, -1., 1., -1., 1., .1, 10.);
-    p.camera->lookAt({0, 0, 1}, {0, 0, 0});
-    p.view = e.createView();
-    p.view->setScene(p.scene);
-    p.view->setCamera(p.camera);
-    p.view->setPostProcessingEnabled(false);
-    p.view->setBlendMode(View::BlendMode::TRANSLUCENT);
-    p.view->setShadowingEnabled(false);
+    impl_->load_material(material);
+    impl_->load_font(font, display_font);
+    impl_->create_buffers();
+    impl_->create_geometry();
+    impl_->create_view();
 }
 native_hud::~native_hud() = default;
 void native_hud::begin(unsigned w, unsigned h, float scale) {
@@ -248,87 +211,71 @@ void native_hud::clear_clip() {
     clip_ = {0, 0, width(), height()};
 }
 void native_hud::emit(hud_vertex a, hud_vertex b, hud_vertex c) {
-    auto append = [&](hud_vertex v) {
-        v.x = 2 * v.x * scale_ / width_ - 1;
-        v.y = 1 - 2 * v.y * scale_ / height_;
-        vertices_.push_back(v);
-    };
-    auto inside = [&](hud_vertex v) {
-        return v.x >= clip_[0] && v.y >= clip_[1] && v.x <= clip_[2] && v.y <= clip_[3];
-    };
-    if (inside(a) && inside(b) && inside(c)) {
-        append(a);
-        append(b);
-        append(c);
-        return;
-    }
-    if (std::max({a.x, b.x, c.x}) < clip_[0] || std::min({a.x, b.x, c.x}) > clip_[2] ||
-        std::max({a.y, b.y, c.y}) < clip_[1] || std::min({a.y, b.y, c.y}) > clip_[3])
-        return;
-    std::array<hud_vertex, 12> polygon{}, next{};
-    polygon[0] = a;
-    polygon[1] = b;
-    polygon[2] = c;
-    size_t count = 3;
-    auto coordinate = [](const hud_vertex& v, unsigned axis) { return axis == 0 ? v.x : v.y; };
-    auto mix = [](hud_vertex a, hud_vertex b, float t) {
-        return hud_vertex{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, 0,
-                          a.u + (b.u - a.u) * t, a.v + (b.v - a.v) * t, a.r + (b.r - a.r) * t,
-                          a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t};
-    };
-    for (unsigned edge = 0; edge < 4 && count; ++edge) {
-        unsigned axis = edge % 2;
-        float limit = clip_[edge];
-        auto inside_edge = [&](hud_vertex v) {
-            return edge < 2 ? coordinate(v, axis) >= limit : coordinate(v, axis) <= limit;
-        };
-        size_t next_count = 0;
-        auto previous = polygon[count - 1];
-        bool before = inside_edge(previous);
-        for (size_t i = 0; i < count; ++i) {
-            auto current = polygon[i];
-            bool after = inside_edge(current);
-            if (before != after)
-                next[next_count++] = mix(previous, current,
-                                         (limit - coordinate(previous, axis)) /
-                                             (coordinate(current, axis) - coordinate(previous, axis)));
-            if (after)
-                next[next_count++] = current;
-            previous = current;
-            before = after;
-        }
-        polygon = next;
-        count = next_count;
-    }
-    for (size_t i = 1; i + 1 < count; ++i) {
-        append(polygon[0]);
-        append(polygon[i]);
-        append(polygon[i + 1]);
-    }
+    hud_clipper(vertices_, clip_, width_, height_, scale_).emit(a, b, c);
 }
 void native_hud::triangle(std::array<float, 2> a, std::array<float, 2> b, std::array<float, 2> c, ink ca,
                           ink cb, ink cc) {
-    auto vertex = [](auto p, ink v) {
-        return hud_vertex{p[0], p[1], 0, 8.f / 1024, 8.f / 2048, v.r, v.g, v.b, v.a};
-    };
-    emit(vertex(a, ca), vertex(b, cb), vertex(c, cc));
+    emit(solid_vertex(a, ca), solid_vertex(b, cb), solid_vertex(c, cc));
 }
-void native_hud::quad(float x, float y, float w, float h, float u, float v, float uw, float vh, ink c) {
-    auto vertex = [&](float dx, float dy) {
-        return hud_vertex{x + w * dx, y + h * dy, 0, u + uw * dx, v + vh * dy, c.r, c.g, c.b, c.a};
-    };
-    emit(vertex(0, 0), vertex(1, 0), vertex(1, 1));
-    emit(vertex(0, 0), vertex(1, 1), vertex(0, 1));
+void native_hud::quad(float x, float y, float w, float h, float u, float v, float uw, float vh, ink color) {
+    const hud_vertex top_left{x, y, 0, u, v, color.r, color.g, color.b, color.a};
+    const hud_vertex top_right{x + w, y, 0, u + uw, v, color.r, color.g, color.b, color.a};
+    const hud_vertex bottom_right{x + w, y + h, 0, u + uw, v + vh, color.r, color.g, color.b, color.a};
+    const hud_vertex bottom_left{x, y + h, 0, u, v + vh, color.r, color.g, color.b, color.a};
+    emit(top_left, top_right, bottom_right);
+    emit(top_left, bottom_right, bottom_left);
 }
 void native_hud::rectangle(float x, float y, float w, float h, ink c) {
     quad(x, y, w, h, 8.f / 1024, 8.f / 2048, 0, 0, c);
 }
-void native_hud::paper_texture(float x, float y, float w, float h) {
-    for (float yy = 0; yy < h; yy += 128)
-        for (float xx = 0; xx < w; xx += 128) {
-            float width = std::min(128.f, w - xx), height = std::min(128.f, h - yy);
-            quad(x + xx, y + yy, width, height, 960.5f / 1024, 1984.5f / 2048, width / 128 * 63 / 1024,
-                 height / 128 * 63 / 2048, {1, 1, 1, 1});
+hud_image native_hud::upload_image(unsigned width, unsigned height, std::span<const std::uint8_t> rgba) {
+    if (!width || !height || width > font_atlas::width || height > font_atlas::height ||
+        rgba.size() != std::size_t(width) * height * 4)
+        throw std::invalid_argument("Invalid HUD image dimensions");
+    auto& state = *impl_;
+    auto x = state.image_x, y = state.image_y, row = state.image_row;
+    if (width > x) {
+        x = font_atlas::width;
+        y -= row;
+        row = 0;
+    }
+    row = std::max(row, height);
+    if (row > y || y - row < state.font_height)
+        throw std::length_error("HUD image atlas is full");
+    x -= width;
+    auto pixels = std::make_unique<std::vector<std::uint8_t>>(rgba.begin(), rgba.end());
+    state.images.reserve(state.images.size() + 1);
+    auto* transferred = pixels.get();
+    backend::PixelBufferDescriptor image(transferred->data(), transferred->size(),
+                                         backend::PixelDataFormat::RGBA, backend::PixelDataType::UBYTE,
+                                         filament_detail::release_vector<std::uint8_t>, transferred);
+    pixels.release();
+    state.atlas->setImage(state.e, 0, x, y - height, width, height, std::move(image));
+    state.atlas->generateMipmaps(state.e);
+    state.images.push_back({x, y - height, width, height});
+    state.image_x = x;
+    state.image_y = y;
+    state.image_row = row;
+    return {state.images.size()};
+}
+void native_hud::image(hud_image id, float x, float y, float width, float height, ink tint) {
+    const auto& region = impl_->images.at(id.value - 1);
+    quad(x, y, width, height, (region.x + .5f) / font_atlas::width, (region.y + .5f) / font_atlas::height,
+         float(region.width - 1) / font_atlas::width, float(region.height - 1) / font_atlas::height, tint);
+}
+void native_hud::tiled_image(hud_image id, float x, float y, float width, float height, float tile_width,
+                             float tile_height, ink tint) {
+    if (!std::isfinite(tile_width) || !std::isfinite(tile_height) || tile_width <= 0 || tile_height <= 0 ||
+        !std::isfinite(width) || !std::isfinite(height) || width < 0 || height < 0)
+        throw std::invalid_argument("Invalid HUD tile dimensions");
+    const auto& region = impl_->images.at(id.value - 1);
+    for (float yy = 0; yy < height; yy += tile_height)
+        for (float xx = 0; xx < width; xx += tile_width) {
+            const float w = std::min(tile_width, width - xx), h = std::min(tile_height, height - yy);
+            quad(x + xx, y + yy, w, h, (region.x + .5f) / font_atlas::width,
+                 (region.y + .5f) / font_atlas::height,
+                 w / tile_width * (region.width - 1) / font_atlas::width,
+                 h / tile_height * (region.height - 1) / font_atlas::height, tint);
         }
 }
 void native_hud::line(float x, float y, float x2, float y2, float thickness, ink c) {
@@ -353,8 +300,6 @@ float native_hud::measure(const std::string& text, float size, int face) const {
 }
 void native_hud::text(float x, float y, const std::string& s, float size, ink c, int face) {
     float origin = x;
-    if (face < 0)
-        face = size >= 26 ? 1 : 0;
     for (unsigned ch : glyphs(s)) {
         if (ch == '\n') {
             y += size * 1.35f;
@@ -376,10 +321,8 @@ void native_hud::render(renderer& graphics) {
     auto& p = *impl_;
     auto* copy = new std::vector<hud_vertex>(vertices_);
     p.vb->setBufferAt(p.e, 0,
-                      VertexBuffer::BufferDescriptor(
-                          copy->data(), copy->size() * sizeof(hud_vertex),
-                          [](void*, size_t, void* u) { delete static_cast<std::vector<hud_vertex>*>(u); },
-                          copy));
+                      VertexBuffer::BufferDescriptor(copy->data(), copy->size() * sizeof(hud_vertex),
+                                                     filament_detail::release_vector<hud_vertex>, copy));
     p.e.getRenderableManager().setGeometryAt(p.e.getRenderableManager().getInstance(p.entity), 0,
                                              RenderableManager::PrimitiveType::TRIANGLES, p.vb, p.ib, 0,
                                              vertices_.size());

@@ -1,19 +1,22 @@
 #pragma once
 namespace sengine {
-struct pointer_capture {
-    bool focused{}, requested{}, failed{};
+class pointer_capture {
+  public:
+    void focus(bool focused) {
+        if (focused_ != focused)
+            retry();
+        focused_ = focused;
+    }
+    void request(bool requested) {
+        if (requested_ != requested)
+            retry();
+        requested_ = requested;
+    }
+    bool captured() const noexcept { return focused_ && requested_ && !failed_; }
+    void fail() noexcept { failed_ = true; }
+    void retry() noexcept { failed_ = false; }
+
+  private:
+    bool focused_{}, requested_{}, failed_{};
 };
-inline void focus(pointer_capture& state, bool focused) {
-    if (state.focused != focused)
-        state.failed = false;
-    state.focused = focused;
-}
-inline void request_capture(pointer_capture& state, bool requested) {
-    if (state.requested != requested)
-        state.failed = false;
-    state.requested = requested;
-}
-inline bool captured(const pointer_capture& state) {
-    return state.focused && state.requested && !state.failed;
-}
 }

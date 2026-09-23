@@ -2,8 +2,13 @@
 #include <algorithm>
 #include <cmath>
 namespace sengine {
+namespace {
+bool finite(point value) {
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+}
+
 std::optional<float> intersect(point o, point d, box box, float limit) {
-    auto finite = [](point p) { return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z); };
     if (!finite(o) || !finite(d) || !finite(box.low) || !finite(box.high) || !std::isfinite(limit) ||
         limit < 0 || (d.x == 0 && d.y == 0 && d.z == 0) || box.low.x > box.high.x || box.low.y > box.high.y ||
         box.low.z > box.high.z)

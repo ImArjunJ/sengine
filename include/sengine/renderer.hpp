@@ -1,5 +1,5 @@
 #pragma once
-#include "explorer.hpp"
+#include "camera.hpp"
 #include "math.hpp"
 #include "window.hpp"
 #include <filesystem>
@@ -31,7 +31,7 @@ class renderer {
     void configure(const render_options&);
     void visible_layers(std::uint8_t);
     void focus_distance(float);
-    bool frame(const camera_pose&, unsigned width, unsigned height, float near_plane, float far_plane,
+    bool frame(const camera_view&, unsigned width, unsigned height, float near_plane, float far_plane,
                native_hud* overlay = nullptr, const std::filesystem::path& capture = {},
                bool capture_overlay = true);
 
