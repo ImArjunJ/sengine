@@ -2,21 +2,22 @@
 
 A C++23 game engine with a backend-neutral API.
 
-![gallery](.github/gallery.png)
+![relay](.github/relay.png)
 
-- Entities, components, transform hierarchies and deferred world changes.
-- Parallel jobs, typed assets, asynchronous loading and snapshot-preserving reloads.
-- Input actions, recorded input, fixed-step clocks and scoped event subscriptions.
-- Animation curves, pose blending, procedural meshes and perspective or orthographic cameras.
-- glTF scenes, skeletal animation, morph targets, PBR materials, shadows and positional lights.
-- Audio streams, text, images and immediate-mode drawing.
+- Scene lifecycles, fixed updates, input routing and frame pacing.
+- Entity worlds, transform hierarchies and synchronized meshes.
+- Jobs, typed assets, asynchronous loading and reloads.
+- Animation, procedural geometry, glTF scenes and PBR rendering.
+- Audio, text, images and immediate-mode drawing.
 
 ```sh
 ./tools/fetch_filament.sh
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/clang_libcxx.cmake
 cmake --build build
-./build/sengine_gallery
+./build/sengine_relay
 ```
+
+Relay is a small collection game. The [example](examples/relay.cpp) covers scene transitions, pause/resume, input actions and world rendering.
 
 Choose `sengine_window_backend=sdl` or `glfw`, and `sengine_graphics_api=opengl`, `vulkan` or `metal`. Defaults are SDL and OpenGL on Linux, SDL and Metal on macOS. Rendering uses Filament; audio uses SDL. Public headers expose neither.
 
@@ -32,4 +33,6 @@ cmake --build build-core
 
 Link `sengine::sengine` through `add_subdirectory` or an installed CMake package. CMake exports compile commands.
 
-World changes and asset commits belong to their owning thread. Component references last until structural changes; asset snapshots retain their resource across reloads. Keep the window alive through renderer destruction, and the renderer alive through scene and HUD destruction. Construct a canvas with its window and HUD, and hold its `activate()` binding while drawing. Job pools drain queued work on destruction; callbacks must not destroy their own pool.
+Scene transitions apply next frame. `fixed_input()` retains taps until a fixed update. Only the active scene receives input and updates; suspended scenes keep their resources.
+
+Keep borrowed windows, renderers, scenes and worlds alive through their dependents. World changes and asset commits stay on the owning thread. Canvas drawing needs an `activate()` binding; job pools drain on destruction.

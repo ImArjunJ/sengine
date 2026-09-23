@@ -1,0 +1,19 @@
+material {
+    name : hud,
+    parameters : [{ type : sampler2d, name : atlas }],
+    requires : [uv0, color],
+    shadingModel : unlit,
+    culling : none,
+    depthWrite : false,
+    depthCulling : false,
+    blending : transparent
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec2 uv = getUV0();
+        uv.y = 1.0 - uv.y;
+        material.baseColor = getColor() * texture(materialParams_atlas, uv);
+        material.baseColor.rgb *= material.baseColor.a;
+    }
+}

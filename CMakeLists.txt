@@ -21,6 +21,7 @@ add_library(sengine
   src/jobs.cpp
   src/math.cpp
   src/primitives.cpp
+  src/runtime.cpp
   src/timing.cpp
   src/world.cpp)
 add_library(sengine::sengine ALIAS sengine)
@@ -42,7 +43,7 @@ if(sengine_graphics)
   find_package(SDL3 3.2 REQUIRED CONFIG)
   find_package(Freetype REQUIRED)
   find_package(PNG REQUIRED)
-  target_sources(sengine PRIVATE src/native_canvas.cpp src/image_export.cpp src/platform.cpp
+  target_sources(sengine PRIVATE src/application.cpp src/native_canvas.cpp src/image_export.cpp src/platform.cpp src/world_renderer.cpp
     src/backends/${sengine_window_backend}_window.cpp src/backends/sdl_audio.cpp
     src/backends/filament_renderer.cpp src/backends/filament_hud.cpp src/backends/font_atlas.cpp
     src/backends/filament_nodes.cpp src/backends/filament_lights.cpp src/backends/filament_scene.cpp src/backends/filament_materials.cpp
@@ -61,14 +62,23 @@ if(sengine_graphics)
   if(PROJECT_IS_TOP_LEVEL)
     add_executable(sengine_viewer examples/viewer.cpp)
     target_link_libraries(sengine_viewer PRIVATE sengine)
-    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/materials/surface.filamat"
-      COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/materials"
-      COMMAND "${filament_root}/bin/matc" -a all -p desktop
-        -o "${CMAKE_CURRENT_BINARY_DIR}/materials/surface.filamat"
-        "${CMAKE_CURRENT_SOURCE_DIR}/examples/materials/surface.mat"
-      DEPENDS examples/materials/surface.mat VERBATIM)
-    add_executable(sengine_gallery examples/gallery.cpp "${CMAKE_CURRENT_BINARY_DIR}/materials/surface.filamat")
+    foreach(material IN ITEMS surface hud)
+      add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/materials/${material}.filamat"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/materials"
+        COMMAND "${filament_root}/bin/matc" -a all -p desktop
+          -o "${CMAKE_CURRENT_BINARY_DIR}/materials/${material}.filamat"
+          "${CMAKE_CURRENT_SOURCE_DIR}/examples/materials/${material}.mat"
+        DEPENDS "examples/materials/${material}.mat" VERBATIM)
+    endforeach()
+    add_custom_target(sengine_example_materials DEPENDS
+      "${CMAKE_CURRENT_BINARY_DIR}/materials/surface.filamat"
+      "${CMAKE_CURRENT_BINARY_DIR}/materials/hud.filamat")
+    add_executable(sengine_gallery examples/gallery.cpp)
+    add_dependencies(sengine_gallery sengine_example_materials)
     target_link_libraries(sengine_gallery PRIVATE sengine)
+    add_executable(sengine_relay examples/relay.cpp)
+    add_dependencies(sengine_relay sengine_example_materials)
+    target_link_libraries(sengine_relay PRIVATE sengine)
   endif()
 endif()
 
