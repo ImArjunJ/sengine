@@ -47,6 +47,17 @@ std::vector<std::uint8_t> base64(std::string_view text) {
         throw std::invalid_argument("Invalid glTF base64 padding");
     return result;
 }
+void relocate_buffer(json& view, const std::vector<std::vector<std::uint8_t>>& buffers,
+                     const std::vector<std::size_t>& offsets) {
+    const auto index = view.at("buffer").get<std::size_t>();
+    const auto offset = view.value("byteOffset", std::size_t{});
+    const auto length = view.at("byteLength").get<std::size_t>();
+    const auto& data = buffers.at(index);
+    if (offset > data.size() || length > data.size() - offset)
+        throw std::invalid_argument("Model buffer view exceeds its buffer");
+    view["buffer"] = 0;
+    view["byteOffset"] = offsets.at(index) + offset;
+}
 std::vector<float> numbers(const json& source, std::size_t count) {
     if (!source.is_array() || source.size() != count)
         throw std::invalid_argument("Invalid glTF vector size");
@@ -208,7 +219,7 @@ gltf_source::gltf_source(const std::filesystem::path& path) {
     pack();
     document_ = {};
     buffers_.clear();
-    binary_.clear();
+    std::vector<std::uint8_t>{}.swap(binary_);
 }
 std::vector<float> gltf_source::accessor(std::size_t index, unsigned width) const {
     const auto& source = document_.at("accessors").at(index);
@@ -320,7 +331,8 @@ void gltf_source::read_nodes() {
                 target.morphs = names;
             }
         }
-        for (auto child : source.value("children", std::vector<std::size_t>{})) {
+        target.children = source.value("children", std::vector<std::size_t>{});
+        for (auto child : target.children) {
             if (child >= nodes.size() || child == i || nodes[child].parent)
                 throw std::invalid_argument("Invalid glTF hierarchy");
             nodes[child].parent = i;
@@ -380,6 +392,24 @@ void gltf_source::read_animations() {
     }
 }
 void gltf_source::pack() {
+    binary_.clear();
+    std::vector<std::size_t> offsets;
+    for (const auto& buffer : buffers_) {
+        while (binary_.size() % 4)
+            binary_.push_back(0);
+        offsets.push_back(binary_.size());
+        binary_.insert(binary_.end(), buffer.begin(), buffer.end());
+    }
+    while (binary_.size() % 4)
+        binary_.push_back(0);
+    if (document_.contains("bufferViews"))
+        for (auto& view : document_["bufferViews"]) {
+            relocate_buffer(view, buffers_, offsets);
+            if (view.contains("extensions") && view["extensions"].contains("EXT_meshopt_compression"))
+                relocate_buffer(view["extensions"]["EXT_meshopt_compression"], buffers_, offsets);
+        }
+    if (!buffers_.empty())
+        document_["buffers"] = json::array({{{"byteLength", binary_.size()}}});
     auto text = document_.dump();
     while (text.size() % 4)
         text += ' ';

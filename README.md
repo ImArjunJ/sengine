@@ -36,8 +36,8 @@ Link `sengine::sengine` through `add_subdirectory` or an installed CMake package
 
 Scenes use versioned JSON and explicit [component schemas](examples/scenes.cpp). Prefab references are local; `/` references the root scene. `capture()` saves a standalone snapshot. Load replacements before releasing the current scene.
 
-`world_renderer::advance()` synchronizes model transforms, visibility and animation. Model parts select nodes by name or source index; child visibility follows its ancestors. Reloads prepare replacements before releasing existing instances. Instance storage is reused until its model is released.
+`world_renderer::advance()` synchronizes model transforms, visibility and animation. Model parts select nodes by name or source index; child visibility follows its ancestors. Reloads prepare replacements before releasing existing instances. Instance storage is reused until its model is released. Morph instances keep separate GPU resources.
 
 Call `physics_world::step()` at its configured fixed interval. Characters use Y-up gravity; spheres and capsules need uniform scale.
 
-Keep borrowed windows, renderers, scenes and worlds alive through their dependents. World, model and physics calls stay on the owning thread. Scene transitions apply next frame; `fixed_input()` retains taps until a fixed update.
+Keep borrowed windows, renderers, scenes and worlds alive through their dependents. Material copies retain their source model. World, model and physics calls stay on the owning thread. Scene transitions apply next frame; `fixed_input()` retains taps until a fixed update.

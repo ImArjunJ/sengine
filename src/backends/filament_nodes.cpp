@@ -3,6 +3,12 @@
 #include <algorithm>
 namespace sengine {
 using namespace filament_detail;
+transform_scope::transform_scope(scene& scene) : scene_(scene) {
+    begin_transforms(scene_);
+}
+transform_scope::~transform_scope() {
+    end_transforms(scene_);
+}
 scene_node create_node(scene& scene, scene_node parent) {
     auto& state = scene_data(scene);
     auto& transforms = state.engine.getTransformManager();

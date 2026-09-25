@@ -51,6 +51,7 @@ struct scene::impl {
     struct material_record {
         filament::MaterialInstance* material{};
         bool owned{};
+        std::shared_ptr<void> resources{};
     };
     std::vector<asset_record> assets;
     std::vector<filament::gltfio::FilamentInstance*> instances;

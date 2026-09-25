@@ -12,6 +12,7 @@ struct node_pose {
 struct node_data {
     std::string name;
     std::optional<std::size_t> parent;
+    std::vector<std::size_t> children;
     transform_pose rest;
     node_pose pose;
     std::vector<std::string> morphs;

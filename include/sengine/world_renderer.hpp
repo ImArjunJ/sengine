@@ -17,6 +17,7 @@ class world_renderer {
     bool remove(entity);
     void show(entity, bool visible);
     void offset(entity, const mat4&);
+    void morph_weights(entity, std::span<const float>);
     void synchronize();
     void advance(double seconds);
     void play(entity, std::string clip, double transition = .2, playback_mode = playback_mode::loop);

@@ -37,6 +37,8 @@ scene::impl::~impl() {
             engine.destroy(mesh.morphs);
     }
     for (auto& material : materials)
+        material.resources.reset();
+    for (auto& material : materials)
         if (material.owned)
             engine.destroy(material.material);
     for (auto* shader : shaders)

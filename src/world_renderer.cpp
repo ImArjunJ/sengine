@@ -20,6 +20,7 @@ class mesh_binding {
     mesh_binding(const mesh_binding&) = delete;
     mesh_binding& operator=(const mesh_binding&) = delete;
     void show(bool enabled) { shown_ = enabled; }
+    void morph_weights(std::span<const float> weights) { sengine::morph_weights(scene_, node_, weights); }
     void offset(const mat4& value) { offset_ = value; }
     void synchronize(const mat4& transform) {
         const auto next = transform * offset_;
@@ -99,16 +100,7 @@ class model_binding {
     std::vector<model_node> hidden;
     bool initialized{};
 };
-class transform_scope {
-  public:
-    explicit transform_scope(scene& target) : scene_(target) { begin_transforms(scene_); }
-    ~transform_scope() { end_transforms(scene_); }
-    transform_scope(const transform_scope&) = delete;
-    transform_scope& operator=(const transform_scope&) = delete;
 
-  private:
-    scene& scene_;
-};
 }
 struct world_renderer::impl {
   public:
@@ -313,6 +305,9 @@ void world_renderer::offset(entity id, const mat4& offset) {
         component->offset = offset;
     else
         impl_->require(id).offset(offset);
+}
+void world_renderer::morph_weights(entity id, std::span<const float> weights) {
+    impl_->require(id).morph_weights(weights);
 }
 void world_renderer::synchronize() {
     advance(0);

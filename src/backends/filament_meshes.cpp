@@ -116,6 +116,13 @@ scene_node create_mesh(scene& s, mesh_id id, material_id material, bool shadows)
 }
 void morph_weights(scene& s, scene_node n, std::span<const float> weights) {
     auto& rm = scene_data(s).engine.getRenderableManager();
-    rm.setMorphWeights(rm.getInstance(native(n)), weights.data(), weights.size());
+    const auto instance = rm.getInstance(native(n));
+    if (!instance || weights.size() > rm.getMorphTargetCount(instance))
+        throw std::invalid_argument("Wrong number of mesh morph weights");
+    for (float weight : weights)
+        if (!std::isfinite(weight))
+            throw std::invalid_argument("Mesh morph weights must be finite");
+    if (!weights.empty())
+        rm.setMorphWeights(instance, weights.data(), weights.size());
 }
 }

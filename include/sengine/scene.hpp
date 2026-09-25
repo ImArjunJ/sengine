@@ -74,6 +74,16 @@ class scene {
     std::unique_ptr<impl> impl_;
     friend impl& scene_data(scene&);
 };
+class transform_scope {
+  public:
+    explicit transform_scope(scene&);
+    ~transform_scope();
+    transform_scope(const transform_scope&) = delete;
+    transform_scope& operator=(const transform_scope&) = delete;
+
+  private:
+    scene& scene_;
+};
 scene_node create_node(scene&, scene_node parent = {});
 void set_parent(scene&, scene_node child, scene_node parent, bool preserve_world = true);
 void destroy_node(scene&, scene_node);

@@ -43,7 +43,7 @@ material_id duplicate_material(scene& s, material_id source, const std::string& 
         filament::MaterialInstance::duplicate(p.materials.at(source.value).material, name.c_str());
     if (!material)
         throw std::runtime_error("Cannot duplicate material");
-    p.materials.push_back({material, true});
+    p.materials.push_back({material, true, p.materials.at(source.value).resources});
     return {p.materials.size() - 1};
 }
 void set_material(scene& s, scene_node n, material_id material, unsigned slot) {
