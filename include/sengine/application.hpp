@@ -2,8 +2,10 @@
 #include "runtime.hpp"
 #include "window.hpp"
 #include <chrono>
+#include <stdexcept>
 
 namespace sengine {
+class renderer;
 struct application_options {
     std::string title{"sengine"};
     int width{1280}, height{720};
@@ -15,12 +17,22 @@ struct application_options {
 class application {
   public:
     explicit application(application_options = {});
+    ~application();
     application(const application&) = delete;
     application& operator=(const application&) = delete;
     window& display() noexcept { return display_; }
+    renderer& graphics();
     runtime& scenes() noexcept { return runtime_; }
     const window_metrics& viewport() const noexcept { return viewport_; }
+    double fixed_step() const noexcept { return options_.runtime.fixed_step; }
     void run();
+    template <std::derived_from<runtime_scene> scene, class... arguments>
+    void run(arguments&&... values) {
+        if (running_)
+            throw std::logic_error("Application is already running");
+        runtime_.emplace<scene>(*this, std::forward<arguments>(values)...);
+        run();
+    }
 
   private:
     void loop();
@@ -32,6 +44,7 @@ class application {
     window display_;
     window_metrics viewport_;
     bool running_{};
+    std::unique_ptr<renderer> graphics_;
     runtime runtime_;
 };
 }

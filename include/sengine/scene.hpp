@@ -62,9 +62,11 @@ struct environment_options {
     float3 horizon{.65f, .72f, .80f}, zenith{.20f, .32f, .48f}, ground{.16f, .15f, .12f};
     float upper_curve{.45f}, lower_curve{.35f}, intensity{9000};
 };
+enum class scene_target { shared, isolated };
 class scene {
   public:
-    explicit scene(renderer&);
+    explicit scene(renderer&, scene_target = scene_target::shared);
+    scene(renderer&, const scene& target);
     ~scene();
     scene(const scene&) = delete;
     scene& operator=(const scene&) = delete;

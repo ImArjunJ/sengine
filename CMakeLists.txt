@@ -22,6 +22,7 @@ add_library(sengine
   src/jobs.cpp
   src/math.cpp
   src/model_schema.cpp
+  src/physics_schema.cpp
   src/primitives.cpp
   src/runtime.cpp
   src/scene_document.cpp
@@ -38,9 +39,10 @@ target_include_directories(sengine SYSTEM PRIVATE third_party)
 set_target_properties(sengine PROPERTIES CXX_EXTENSIONS OFF)
 if(sengine_physics)
   include(cmake/physics.cmake)
-  target_sources(sengine PRIVATE src/physics.cpp src/physics_schema.cpp)
+  target_sources(sengine PRIVATE src/physics.cpp)
   target_link_libraries(sengine PRIVATE Jolt)
 endif()
+target_compile_definitions(sengine PRIVATE SENGINE_HAS_PHYSICS=$<BOOL:${sengine_physics}>)
 if(MSVC)
   target_compile_options(sengine PRIVATE /W4 /permissive-)
 else()
@@ -51,10 +53,21 @@ if(sengine_graphics)
     message(FATAL_ERROR "Unsupported sengine backend")
   endif()
   include(cmake/filament.cmake)
+  add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/surface_material.cpp"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    COMMAND "${filament_root}/bin/matc" -a all -p desktop
+      -o "${CMAKE_CURRENT_BINARY_DIR}/generated/surface.filamat"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/materials/surface.mat"
+    COMMAND ${CMAKE_COMMAND}
+      "-DINPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/surface.filamat"
+      "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/surface_material.cpp"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_material.cmake"
+    DEPENDS src/materials/surface.mat cmake/embed_material.cmake VERBATIM)
+  target_sources(sengine PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/surface_material.cpp")
   find_package(SDL3 3.2 REQUIRED CONFIG)
   find_package(Freetype REQUIRED)
   find_package(PNG REQUIRED)
-  target_sources(sengine PRIVATE src/application.cpp src/native_canvas.cpp src/image_export.cpp src/platform.cpp src/world_renderer.cpp
+  target_sources(sengine PRIVATE src/application.cpp src/game_scene.cpp src/native_canvas.cpp src/image_export.cpp src/platform.cpp src/world_renderer.cpp
     src/backends/${sengine_window_backend}_window.cpp src/backends/sdl_audio.cpp
     src/backends/filament_renderer.cpp src/backends/filament_hud.cpp src/backends/font_atlas.cpp
     src/backends/filament_model.cpp src/backends/gltf_source.cpp
@@ -73,6 +86,8 @@ if(sengine_graphics)
     endif()
   endif()
   if(PROJECT_IS_TOP_LEVEL)
+    add_executable(sengine_hello examples/hello.cpp)
+    target_link_libraries(sengine_hello PRIVATE sengine)
     add_executable(sengine_viewer examples/viewer.cpp)
     target_link_libraries(sengine_viewer PRIVATE sengine)
     foreach(material IN ITEMS surface hud)
@@ -91,11 +106,9 @@ if(sengine_graphics)
     target_link_libraries(sengine_gallery PRIVATE sengine)
     if(sengine_physics)
       add_executable(sengine_physics_demo examples/physics.cpp)
-      add_dependencies(sengine_physics_demo sengine_example_materials)
       target_link_libraries(sengine_physics_demo PRIVATE sengine)
     endif()
     add_executable(sengine_models examples/models.cpp)
-    add_dependencies(sengine_models sengine_example_materials)
     target_link_libraries(sengine_models PRIVATE sengine)
     add_executable(sengine_relay examples/relay.cpp)
     add_dependencies(sengine_relay sengine_example_materials)

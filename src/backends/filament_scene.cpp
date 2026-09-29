@@ -1,12 +1,27 @@
 #include "backends/filament_scene_state.hpp"
 #include "backends/filament_values.hpp"
 #include <filament/LightManager.h>
+#include <filament/View.h>
 #include <gltfio/ResourceLoader.h>
 #include <gltfio/materials/uberarchive.h>
+#include <bit>
+#include <cmath>
 namespace sengine {
 using namespace filament_detail;
-scene::impl::impl(renderer& graphics)
-    : engine(backend_access::engine(graphics)), target(backend_access::scene(graphics)),
+scene_surface::scene_surface(renderer& graphics)
+    : renderer_(graphics), target_(backend_access::engine(graphics).createScene()) {
+    if (!target_)
+        throw std::runtime_error("Cannot allocate a rendering scene");
+}
+scene_surface::~scene_surface() {
+    auto& view = backend_access::view(renderer_);
+    if (view.getScene() == target_)
+        view.setScene(nullptr);
+    backend_access::engine(renderer_).destroy(target_);
+}
+scene::impl::impl(renderer& graphics, std::shared_ptr<scene_surface> surface)
+    : surface(std::move(surface)), engine(backend_access::engine(graphics)),
+      target(this->surface ? this->surface->target() : backend_access::scene(graphics)),
       names(std::make_unique<utils::NameComponentManager>(utils::EntityManager::get())) {
     provider.reset(filament::gltfio::createUbershaderProvider(&engine, UBERARCHIVE_DEFAULT_DATA,
                                                               UBERARCHIVE_DEFAULT_SIZE));
@@ -19,7 +34,6 @@ scene::impl::impl(renderer& graphics)
         throw std::runtime_error("Cannot initialize scene loader");
 }
 scene::impl::~impl() {
-    engine.flushAndWait();
     environment.reset();
     for (auto entity : owned_nodes) {
         target.remove(entity);
@@ -47,7 +61,15 @@ scene::impl::~impl() {
 scene::impl& scene_data(scene& s) {
     return *s.impl_;
 }
-scene::scene(renderer& graphics) : impl_(std::make_unique<impl>(graphics)) {}
+scene::scene(renderer& graphics, scene_target target)
+    : impl_(std::make_unique<impl>(graphics, target == scene_target::isolated
+                                              ? std::make_shared<scene_surface>(graphics)
+                                              : nullptr)) {}
+scene::scene(renderer& graphics, const scene& target) {
+    if (&backend_access::engine(graphics) != &target.impl_->engine)
+        throw std::invalid_argument("Scene resources must share the target's renderer");
+    impl_ = std::make_unique<impl>(graphics, target.impl_->surface);
+}
 scene::~scene() = default;
 scene_asset load_scene(scene& s, const std::filesystem::path& path, bool visible) {
     auto& p = scene_data(s);
@@ -189,9 +211,24 @@ void layers(scene& s, scene_node n, std::uint8_t mask) {
 }
 scene_node add_sun(scene& s, const sun_options& options) {
     using namespace filament;
+    for (float value : {options.color.x, options.color.y, options.color.z, options.intensity,
+                        options.angular_radius, options.shadow_far, options.shadow_hint})
+        if (!std::isfinite(value) || value < 0)
+            throw std::invalid_argument("Sun color, intensity and shadow distances must be finite and nonnegative");
+    const auto direction_length = length(options.direction);
+    if (!std::isfinite(direction_length) || direction_length <= .00001f)
+        throw std::invalid_argument("Sun direction must be finite and nonzero");
+    if (options.cascades < 1 || options.cascades > 4 || options.shadow_size < 8 ||
+        !std::has_single_bit(options.shadow_size))
+        throw std::invalid_argument("Sun requires 1 to 4 cascades and a power-of-two shadow size of at least 8");
+    float previous{};
+    for (unsigned i = 0; i + 1 < options.cascades; ++i) {
+        const auto split = options.splits[i];
+        if (!std::isfinite(split) || split <= previous || split >= 1)
+            throw std::invalid_argument("Sun cascade splits must increase between 0 and 1");
+        previous = split;
+    }
     auto& p = scene_data(s);
-    auto entity = utils::EntityManager::get().create();
-    p.owned_nodes.push_back(entity);
     LightManager::ShadowOptions shadows;
     shadows.mapSize = options.shadow_size;
     shadows.shadowCascades = options.cascades;
@@ -200,7 +237,9 @@ scene_node add_sun(scene& s, const sun_options& options) {
     shadows.shadowFarHint = options.shadow_hint;
     shadows.stable = options.stable;
     shadows.lispsm = false;
-    LightManager::Builder(LightManager::Type::SUN)
+    const auto node = create_node(s);
+    const auto entity = native(node);
+    const auto status = LightManager::Builder(LightManager::Type::SUN)
         .color(native(options.color))
         .intensity(options.intensity)
         .direction(native(options.direction))
@@ -208,6 +247,10 @@ scene_node add_sun(scene& s, const sun_options& options) {
         .castShadows(true)
         .shadowOptions(shadows)
         .build(p.engine, entity);
+    if (status != LightManager::Builder::Success) {
+        destroy_node(s, node);
+        throw std::runtime_error("Cannot create sun light");
+    }
     p.target.addEntity(entity);
     return value(entity);
 }
@@ -222,7 +265,6 @@ void shadow_resolution(scene& s, scene_node n, unsigned size) {
 }
 void set_environment(scene& s, const environment_options& options) {
     auto& p = scene_data(s);
-    p.environment.reset();
     p.environment = std::make_unique<filament_environment>(p.engine, p.target, options);
 }
 }

@@ -129,14 +129,14 @@ void runtime::advance(double seconds) {
         return;
     auto& scene = *scenes_.back();
     for (unsigned i = 0; i < frame_.fixed.steps; ++i) {
-        scene.fixed_update({frame_.fixed.first_tick + i, frame_.fixed.step});
+        scene.run_fixed_update({frame_.fixed.first_tick + i, frame_.fixed.step});
         scene.fixed_input_.begin_frame();
     }
-    scene.update(frame_);
+    scene.run_update(frame_);
 }
 void runtime::render() {
     const callback_scope scope(dispatching_);
     if (!scenes_.empty())
-        scenes_.back()->render(frame_);
+        scenes_.back()->run_render(frame_);
 }
 }

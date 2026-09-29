@@ -19,7 +19,20 @@
 #include <utils/EntityManager.h>
 #include <utils/NameComponentManager.h>
 namespace sengine {
+class scene_surface {
+  public:
+    explicit scene_surface(renderer&);
+    ~scene_surface();
+    scene_surface(const scene_surface&) = delete;
+    scene_surface& operator=(const scene_surface&) = delete;
+    filament::Scene& target() const noexcept { return *target_; }
+
+  private:
+    renderer& renderer_;
+    filament::Scene* target_;
+};
 struct scene::impl {
+    std::shared_ptr<scene_surface> surface;
     filament::Engine& engine;
     filament::Scene& target;
     std::unique_ptr<utils::NameComponentManager> names;
@@ -62,7 +75,7 @@ struct scene::impl {
     std::unique_ptr<filament_environment> environment;
 
   public:
-    explicit impl(renderer& graphics);
+    explicit impl(renderer& graphics, std::shared_ptr<scene_surface> = {});
     ~impl();
 };
 scene::impl& scene_data(scene&);

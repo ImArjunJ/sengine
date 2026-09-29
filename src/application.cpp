@@ -1,4 +1,5 @@
 #include "sengine/application.hpp"
+#include "sengine/renderer.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -32,6 +33,12 @@ application::application(application_options options)
     : options_(validate(std::move(options))),
       display_(options_.title, options_.width, options_.height, options_.window),
       viewport_(display_.metrics()), runtime_(options_.runtime) {}
+application::~application() = default;
+renderer& application::graphics() {
+    if (!graphics_)
+        graphics_ = std::make_unique<renderer>(display_);
+    return *graphics_;
+}
 void application::poll() {
     input_event event;
     while (display_.poll(event)) {

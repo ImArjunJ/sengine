@@ -1,6 +1,7 @@
 #include "backends/filament_scene_state.hpp"
 #include "backends/filament_values.hpp"
 #include "backends/material_package.hpp"
+#include "surface_material.hpp"
 namespace sengine {
 using namespace filament_detail;
 material_id material_at(scene& s, scene_node n, unsigned slot) {
@@ -35,6 +36,26 @@ material_id load_material(scene& s, const std::filesystem::path& path) {
         throw;
     }
     return {p.materials.size() - 1};
+}
+material_id detail::make_surface(scene& s) {
+    auto& state = scene_data(s);
+    const auto package = surface_package();
+    auto* shader = filament::Material::Builder().package(package.data(), package.size()).build(state.engine);
+    if (!shader)
+        throw std::runtime_error("Cannot create the built-in surface material");
+    try {
+        state.shaders.reserve(state.shaders.size() + 1);
+        state.materials.reserve(state.materials.size() + 1);
+        auto* instance = shader->createInstance();
+        if (!instance)
+            throw std::runtime_error("Cannot create a surface material instance");
+        state.shaders.push_back(shader);
+        state.materials.push_back({instance, true});
+    } catch (...) {
+        state.engine.destroy(shader);
+        throw;
+    }
+    return {state.materials.size() - 1};
 }
 material_id duplicate_material(scene& s, material_id source, const std::string& name) {
     auto& p = scene_data(s);

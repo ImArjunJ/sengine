@@ -14,12 +14,15 @@ class world_renderer {
     world_renderer(const world_renderer&) = delete;
     world_renderer& operator=(const world_renderer&) = delete;
     void mesh(entity, mesh_id, material_id, mat4 offset = {});
+    void material(entity, material_id);
+    bool contains(entity) const noexcept;
     bool remove(entity);
     void show(entity, bool visible);
     void offset(entity, const mat4&);
     void morph_weights(entity, std::span<const float>);
     void synchronize();
     void advance(double seconds);
+    void attach(entity);
     void play(entity, std::string clip, double transition = .2, playback_mode = playback_mode::loop);
     model_instance& model(entity);
     void reload(const std::string& uri);

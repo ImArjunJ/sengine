@@ -6,6 +6,7 @@
 #include <memory>
 namespace sengine {
 class native_hud;
+class scene;
 struct fog_options {
     bool enabled{};
     float distance{}, density{}, cutoff{320}, falloff{};
@@ -34,6 +35,13 @@ class renderer {
     bool frame(const camera_view&, unsigned width, unsigned height, float near_plane, float far_plane,
                native_hud* overlay = nullptr, const std::filesystem::path& capture = {},
                bool capture_overlay = true);
+    bool frame(scene&, const camera_view&, unsigned width, unsigned height, float near_plane, float far_plane,
+               native_hud* overlay = nullptr, const std::filesystem::path& capture = {},
+               bool capture_overlay = true);
+
+  private:
+    bool draw(scene*, const camera_view&, unsigned width, unsigned height, float near_plane, float far_plane,
+              native_hud*, const std::filesystem::path& capture, bool capture_overlay);
 
   private:
     friend struct backend_access;

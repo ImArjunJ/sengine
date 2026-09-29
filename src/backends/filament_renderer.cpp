@@ -1,4 +1,5 @@
 #include "backends/filament_access.hpp"
+#include "backends/filament_scene_state.hpp"
 #include "native_surface.hpp"
 #include "sengine/image_export.hpp"
 #include "sengine/native_hud.hpp"
@@ -152,6 +153,18 @@ filament::Renderer& backend_access::drawing(renderer& r) {
 bool renderer::frame(const camera_view& camera, unsigned width, unsigned height, float near_plane,
                      float far_plane, native_hud* overlay, const std::filesystem::path& capture,
                      bool capture_overlay) {
+    return draw(nullptr, camera, width, height, near_plane, far_plane, overlay, capture, capture_overlay);
+}
+bool renderer::frame(scene& scene, const camera_view& camera, unsigned width, unsigned height,
+                     float near_plane, float far_plane, native_hud* overlay,
+                     const std::filesystem::path& capture, bool capture_overlay) {
+    return draw(&scene, camera, width, height, near_plane, far_plane, overlay, capture, capture_overlay);
+}
+bool renderer::draw(scene* scene, const camera_view& camera, unsigned width, unsigned height,
+                    float near_plane, float far_plane, native_hud* overlay,
+                    const std::filesystem::path& capture, bool capture_overlay) {
+    if (scene && &scene_data(*scene).engine != impl_->engine)
+        throw std::invalid_argument("Cannot render a scene owned by another renderer");
     if (!width || !height)
         return false;
     if (!std::isfinite(near_plane) || !std::isfinite(far_plane) || near_plane <= 0 ||
@@ -172,6 +185,11 @@ bool renderer::frame(const camera_view& camera, unsigned width, unsigned height,
         pixels.resize(std::size_t(width) * height * 4);
     }
     auto& p = *impl_;
+    auto* target = scene ? &scene_data(*scene).target : p.scene;
+    if (p.view->getScene() != target) {
+        p.view->clearFrameHistory(*p.engine);
+        p.view->setScene(target);
+    }
     p.view->setViewport({0, 0, width, height});
     const double aspect = double(width) / height;
     if (camera.projection == projection_kind::orthographic) {

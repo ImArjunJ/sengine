@@ -40,6 +40,9 @@ class runtime_scene {
   private:
     friend class runtime;
     void release_input();
+    virtual void run_fixed_update(runtime_step step) { fixed_update(step); }
+    virtual void run_update(const runtime_frame& frame) { update(frame); }
+    virtual void run_render(const runtime_frame& frame) { render(frame); }
 
   private:
     input_map input_, fixed_input_;

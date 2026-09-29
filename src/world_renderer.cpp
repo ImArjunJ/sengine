@@ -20,6 +20,7 @@ class mesh_binding {
     mesh_binding(const mesh_binding&) = delete;
     mesh_binding& operator=(const mesh_binding&) = delete;
     void show(bool enabled) { shown_ = enabled; }
+    void material(material_id value) { set_material(scene_, node_, value); }
     void morph_weights(std::span<const float> weights) { sengine::morph_weights(scene_, node_, weights); }
     void offset(const mat4& value) { offset_ = value; }
     void synchronize(const mat4& transform) {
@@ -294,6 +295,12 @@ bool world_renderer::remove(entity id) {
     impl_->collect();
     return removed;
 }
+void world_renderer::material(entity id, material_id value) {
+    impl_->require(id).material(value);
+}
+bool world_renderer::contains(entity id) const noexcept {
+    return impl_->entities.alive(id) && (impl_->bindings.contains(id) || impl_->models.contains(id));
+}
 void world_renderer::show(entity id, bool visible) {
     if (auto* component = impl_->entities.get<model_component>(id))
         component->visible = visible;
@@ -335,6 +342,29 @@ void world_renderer::play(entity id, std::string clip, double transition, playba
     animation->transition = transition;
     animation->mode = mode;
     animation->paused = false;
+}
+void world_renderer::attach(entity id) {
+    const auto* settings = impl_->entities.get<model_component>(id);
+    if (!settings)
+        throw std::invalid_argument("Attaching a model requires a live entity with a model component");
+    if (impl_->models.contains(id) || impl_->bindings.contains(id))
+        throw std::invalid_argument("Entity already has a render binding");
+    try {
+        const auto transform = impl_->entities.world_transform(id) * settings->offset;
+        validate_transform(transform);
+        auto binding = std::make_unique<model_binding>(impl_->load(settings->source.uri()), settings->source.uri());
+        const auto* animation = impl_->entities.get<model_animation>(id);
+        binding->prepare(animation);
+        auto playback = animation ? *animation : model_animation{};
+        binding->sample(animation ? &playback : nullptr, 0);
+        binding->instance.transform(transform);
+        binding->instance.visible(settings->visible);
+        binding->instance.synchronize();
+        impl_->models.emplace(id, std::move(binding));
+    } catch (...) {
+        impl_->collect();
+        throw;
+    }
 }
 model_instance& world_renderer::model(entity id) {
     return impl_->require_model(id).instance;

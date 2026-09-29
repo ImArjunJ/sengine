@@ -14,6 +14,17 @@
 namespace sengine {
 using namespace filament;
 namespace {
+environment_options validate(environment_options options) {
+    for (auto color : {options.horizon, options.zenith, options.ground})
+        for (float value : {color.x, color.y, color.z})
+            if (!std::isfinite(value) || value < 0)
+                throw std::invalid_argument("Environment colors must be finite and nonnegative");
+    if (!std::isfinite(options.intensity) || options.intensity < 0 ||
+        !std::isfinite(options.upper_curve) || options.upper_curve <= 0 ||
+        !std::isfinite(options.lower_curve) || options.lower_curve <= 0)
+        throw std::invalid_argument("Environment requires nonnegative intensity and positive curve exponents");
+    return options;
+}
 math::float3 direction(unsigned face, float u, float v) {
     switch (face) {
     case 0:
@@ -63,8 +74,10 @@ struct filament_environment::impl {
   public:
     impl(Engine& e, Scene& s) : engine(e), scene(s) {}
     ~impl() {
-        scene.setIndirectLight(nullptr);
-        scene.setSkybox(nullptr);
+        if (scene.getIndirectLight() == light)
+            scene.setIndirectLight(nullptr);
+        if (scene.getSkybox() == sky)
+            scene.setSkybox(nullptr);
         if (light)
             engine.destroy(light);
         if (sky)
@@ -75,8 +88,9 @@ struct filament_environment::impl {
     }
 };
 
-filament_environment::filament_environment(Engine& engine, Scene& scene, const environment_options& options)
+filament_environment::filament_environment(Engine& engine, Scene& scene, const environment_options& input)
     : impl_(std::make_unique<impl>(engine, scene)) {
+    const auto options = validate(input);
     auto& p = *impl_;
     constexpr unsigned size = 64;
     auto pixels = std::make_unique<std::vector<float>>(size * size * 6 * 4);

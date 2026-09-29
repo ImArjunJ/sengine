@@ -279,7 +279,12 @@ struct physics_world::impl {
         require_owner();
         if (!entities.alive(id))
             throw std::invalid_argument("Stale or foreign physics entity");
-        const auto found = bindings.find(id);
+        auto found = bindings.find(id);
+        if (found == bindings.end() &&
+            (entities.get<rigid_body>(id) || entities.get<character_body>(id))) {
+            synchronize();
+            found = bindings.find(id);
+        }
         if (found == bindings.end() || (found->second->rigid && !entities.get<rigid_body>(id)) ||
             (found->second->character && !entities.get<character_body>(id)))
             throw std::invalid_argument("Entity has no physics body");
